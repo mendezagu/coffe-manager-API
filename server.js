@@ -17,10 +17,12 @@ mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopol
 const tableRoutes = require('./routes/tableRoutes');
 const menuRoutes = require('./routes/menuRoutes');
 const waiterRoutes = require('./routes/waiterRoutes');
+const balanceRoutes = require('./routes/balanceRoutes');
 
 app.use('/api/tables', tableRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api/waiters', waiterRoutes);
+app.use('/api/balances', balanceRoutes);
 
 // Ruta raíz para evitar el error 404
 app.get("/", (req, res) => {
