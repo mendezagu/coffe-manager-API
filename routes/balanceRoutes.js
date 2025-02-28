@@ -23,4 +23,14 @@ router.post('/', async (req, res) => {
   }
 });
 
+// Eliminar todos los balances
+router.delete('/', async (req, res) => {
+    try {
+      await Balance.deleteMany({}); // Elimina todos los documentos de la colección
+      res.json({ message: 'Todos los balances han sido eliminados' });
+    } catch (error) {
+      res.status(500).json({ message: 'Error al eliminar balances', error });
+    }
+  });
+
 module.exports = router;
