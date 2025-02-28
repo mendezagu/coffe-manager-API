@@ -22,5 +22,10 @@ app.use('/api/tables', tableRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api/waiters', waiterRoutes);
 
+// Ruta raíz para evitar el error 404
+app.get("/", (req, res) => {
+  res.send("Bienvenido a Coffee Manager API");
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor corriendo en el puerto ${PORT}`));
