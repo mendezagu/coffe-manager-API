@@ -14,7 +14,17 @@ export class TablesService {
   ) {}
 
   async findAll(): Promise<Table[]> {
-    return this.tableModel.find().exec();
+    const tables = await this.tableModel.find().exec();
+    // Poblar waiterName dinámicamente si hay waiterId
+    for (const table of tables) {
+      if (table.waiterId) {
+        const waiter = await this.waiterModel.findById(table.waiterId).exec();
+        table.waiterName = waiter ? waiter.name : null;
+      } else {
+        table.waiterName = null;
+      }
+    }
+    return tables;
   }
 
   async findOne(id: string): Promise<Table> {
