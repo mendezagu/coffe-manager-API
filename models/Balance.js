@@ -4,6 +4,7 @@ const BalanceSchema = new mongoose.Schema({
   tableName: String,
   waiterName: String,
   totalAmount: Number,
+  paymentMethod: { type: String, default: 'efectivo' },
   date: { type: Date, default: Date.now }
 });
 

@@ -3,16 +3,20 @@ import { Document } from 'mongoose';
 
 export type BalanceDocument = Balance & Document;
 
+
 @Schema()
 export class Balance {
-  @Prop()
+  @Prop({ required: true })
   tableName: string;
 
-  @Prop()
+  @Prop({ required: true })
   waiterName: string;
 
-  @Prop()
+  @Prop({ required: true })
   totalAmount: number;
+
+  @Prop({ required: true })
+  paymentMethod: string;
 
   @Prop({ default: Date.now })
   date: Date;

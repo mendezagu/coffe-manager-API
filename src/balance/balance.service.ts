@@ -14,8 +14,22 @@ export class BalanceService {
   }
 
   async create(createBalanceDto: any): Promise<Balance> {
-    const newBalance = new this.balanceModel(createBalanceDto);
-    return newBalance.save();
+    console.log('DTO recibido en backend:', createBalanceDto);
+    if (!createBalanceDto.paymentMethod) {
+      throw new Error('El método de pago es obligatorio');
+    }
+    // Log explícito del valor recibido
+    console.log('Valor recibido para paymentMethod:', createBalanceDto.paymentMethod);
+
+    // Forzar el guardado del campo aunque el esquema no lo reconozca
+    const newBalance = new this.balanceModel({
+      ...createBalanceDto,
+      paymentMethod: createBalanceDto.paymentMethod
+    });
+    console.log('Documento antes de guardar:', newBalance);
+    const saved = await newBalance.save();
+    console.log('Documento guardado en Mongo:', saved);
+    return saved;
   }
 
   async removeAll(): Promise<{ message: string }> {
