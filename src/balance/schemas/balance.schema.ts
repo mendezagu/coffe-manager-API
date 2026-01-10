@@ -6,6 +6,8 @@ export type BalanceDocument = Balance & Document;
 
 @Schema()
 export class Balance {
+    @Prop({ required: true, unique: true })
+    orderId: string;
   @Prop({ required: true })
   tableName: string;
 

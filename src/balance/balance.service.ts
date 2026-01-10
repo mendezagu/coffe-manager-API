@@ -21,6 +21,12 @@ export class BalanceService {
     // Log explícito del valor recibido
     console.log('Valor recibido para paymentMethod:', createBalanceDto.paymentMethod);
 
+    // Validación para evitar duplicados por orderId
+    const duplicate = await this.balanceModel.findOne({ orderId: createBalanceDto.orderId });
+    if (duplicate) {
+      throw new Error('Ya existe un balance para esta orden.');
+    }
+
     // Forzar el guardado del campo aunque el esquema no lo reconozca
     const newBalance = new this.balanceModel({
       ...createBalanceDto,
