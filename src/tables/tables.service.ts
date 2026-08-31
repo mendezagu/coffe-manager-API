@@ -68,7 +68,13 @@ export class TablesService {
         throw new NotFoundException(`Ítem con ID ${item.id} no encontrado`);
       }
 
-      const existingOrder = table.orders.find(order => order.menuItem.toString() === item.id);
+      const note = (item.note || '').trim();
+
+      // Los ítems con nota nunca se fusionan con una línea existente: cada
+      // aclaración (ej. "sin verduras") debe quedar en su propia línea.
+      const existingOrder = !note
+        ? table.orders.find(order => order.menuItem.toString() === item.id && !order.note)
+        : undefined;
 
       if (existingOrder) {
         existingOrder.quantity += item.quantity || 1;
@@ -76,7 +82,8 @@ export class TablesService {
         table.orders.push({
           menuItem: menuItem._id as any,
           quantity: item.quantity || 1,
-        });
+          note,
+        } as any);
       }
     }
 

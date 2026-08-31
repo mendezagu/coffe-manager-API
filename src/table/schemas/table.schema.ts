@@ -8,6 +8,9 @@ export class Order {
 
   @Prop({ default: 1 })
   quantity: number;
+
+  @Prop({ default: '' })
+  note: string;
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);
