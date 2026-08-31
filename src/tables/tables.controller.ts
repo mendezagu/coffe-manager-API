@@ -115,6 +115,16 @@ export class TablesController {
     }
   }
 
+  @Put(':id/update-quantities')
+  async updateQuantities(@Param('id') id: string, @Body() body: { updates: { orderId: string; quantity: number }[] }) {
+    try {
+      return await this.tablesService.updateOrderQuantities(id, body.updates);
+    } catch (error) {
+      console.error(error);
+      throw error;
+    }
+  }
+
   @Put(':id/remove-order')
   async removeOrder(@Param('id') id: string, @Body() body: { orderIds: string[] }) {
     try {

@@ -158,6 +158,27 @@ export class TablesService {
     return { message: 'Mesas desvinculadas correctamente', table };
   }
 
+  async updateOrderQuantities(
+    id: string,
+    updates: { orderId: string; quantity: number }[],
+  ): Promise<Table> {
+    const table = await this.tableModel.findById(id).exec();
+    if (!table) {
+      throw new NotFoundException('Mesa no encontrada');
+    }
+
+    for (const { orderId, quantity } of updates) {
+      const order = table.orders.find(o => (o as any)._id.toString() === orderId);
+      if (order) {
+        order.quantity = quantity;
+      }
+    }
+
+    await table.save();
+    const updatedTable = await this.tableModel.findById(id).populate('orders.menuItem').exec();
+    return updatedTable;
+  }
+
   async removeOrder(id: string, orderIds: string[]): Promise<{ message: string; table: Table }> {
     const table = await this.tableModel.findById(id).exec();
     if (!table) {
