@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Put } from '@nestjs/common';
 import { Role } from '@prisma/client';
-import { IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { Roles } from '../auth/roles.decorator';
 import { TenantId } from '../auth/tenant.decorator';
 import { SettingsService } from './settings.service';
@@ -22,6 +22,7 @@ class UpdateSettingsDto {
   @IsOptional() @IsInt() @Min(0) @Max(23) shiftMorningStart?: number;
   @IsOptional() @IsInt() @Min(0) @Max(23) shiftAfternoonStart?: number;
   @IsOptional() @IsInt() @Min(0) @Max(23) shiftNightStart?: number;
+  @IsOptional() @IsBoolean() splitKitchenBar?: boolean;
 }
 
 @Controller('api/settings')

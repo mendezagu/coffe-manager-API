@@ -15,6 +15,7 @@ export function mapMenuItem(item: MenuItem) {
     price: item.price,
     quantity: item.quantity,
     isPromo: item.isPromo,
+    categoryId: item.categoryId ?? null,
   };
 }
 

@@ -3,11 +3,12 @@
  *
  *   npm run tenant:create -- --name "La Pizzería" --email admin@pizzeria.com --password "clave-larga-123"
  *
- * Opcional: --adminName "Nombre del admin"
+ * Opcional: --adminName "Nombre del admin"  --plan basic|pro   (por defecto: pro)
  */
 import { PrismaClient, Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import 'dotenv/config';
+import { PLAN_FEATURES } from '../src/plans/plans';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -19,6 +20,7 @@ async function main() {
   const email = arg('email')?.trim().toLowerCase();
   const password = arg('password');
   const adminName = arg('adminName') ?? 'Administrador';
+  const plan = arg('plan') ?? 'pro';
 
   if (!name || !email || !password) {
     console.error('Uso: npm run tenant:create -- --name "Negocio" --email admin@correo.com --password "clave"');
@@ -31,6 +33,10 @@ async function main() {
 
   const prisma = new PrismaClient();
   try {
+    if (!(plan in PLAN_FEATURES)) {
+      console.error(`Plan desconocido "${plan}". Planes: ${Object.keys(PLAN_FEATURES).join(', ')}`);
+      process.exit(1);
+    }
     if (await prisma.user.findUnique({ where: { email } })) {
       console.error(`Ya existe un usuario con el email ${email}.`);
       process.exit(1);
@@ -38,6 +44,7 @@ async function main() {
     const tenant = await prisma.tenant.create({
       data: {
         name: name.trim(),
+        plan,
         users: {
           create: { email, name: adminName, role: Role.ADMIN, passwordHash: await bcrypt.hash(password, 10) },
         },

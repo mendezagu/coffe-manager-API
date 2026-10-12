@@ -42,10 +42,15 @@ model MenuItem {
   isPromo  Boolean @default(false)
   orders   Order[]
 
+  // opcional: un plato sin categoría se trata como de cocina
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
+  @@index([categoryId])
   @@map("menu_items")
 }
 
@@ -102,6 +107,7 @@ enum Role {
   CASHIER
   WAITER
   KITCHEN
+  BAR
 }
 
 model User {
@@ -153,12 +159,19 @@ model Tenant {
   shiftAfternoonStart Int @default(12)
   shiftNightStart     Int @default(18)
 
-  waiters   Waiter[]
-  sectors   Sector[]
-  menuItems MenuItem[]
-  tables    Table[]
-  sales     Sale[]
-  users     User[]
+  // Plan contratado: define qué funciones están disponibles (ver src/plans/plans.ts).
+  plan            String  @default("pro")
+  // El negocio elige si manda todo a cocina (false) o separa cocina y barra (true).
+  // Solo tiene efecto si el plan incluye la función.
+  splitKitchenBar Boolean @default(false)
+
+  waiters    Waiter[]
+  sectors    Sector[]
+  menuItems  MenuItem[]
+  categories Category[]
+  tables     Table[]
+  sales      Sale[]
+  users      User[]
 
   @@map("tenants")
 }
@@ -210,4 +223,27 @@ model SaleItem {
 
   @@index([saleId])
   @@map("sale_items")
+}
+
+enum Destination {
+  KITCHEN
+  BAR
+}
+
+// Agrupa los platos del menú. Si el negocio separa cocina y barra, el destino de la
+// categoría decide en qué pantalla aparece cada plato pedido.
+model Category {
+  id String @id @default(uuid())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name        String
+  position    Int         @default(0)
+  destination Destination @default(KITCHEN)
+
+  menuItems MenuItem[]
+
+  @@unique([tenantId, name])
+  @@map("categories")
 }

@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Tenant } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { FEATURE_LABELS, featuresOf, hasFeature } from '../plans/plans';
 
 export interface UpdateSettingsInput {
   name?: string;
@@ -18,6 +19,7 @@ export interface UpdateSettingsInput {
   shiftMorningStart?: number;
   shiftAfternoonStart?: number;
   shiftNightStart?: number;
+  splitKitchenBar?: boolean;
 }
 
 // Logo: una imagen chica embebida (data URL) o un archivo propio de la app (assets/...).
@@ -43,6 +45,12 @@ export function mapSettings(t: Tenant) {
     shiftMorningStart: t.shiftMorningStart,
     shiftAfternoonStart: t.shiftAfternoonStart,
     shiftNightStart: t.shiftNightStart,
+    // Plan y funciones que incluye. `splitKitchenBar` es lo que el negocio eligió; `splitActive`
+    // es lo que realmente rige (elegido Y permitido por el plan).
+    plan: t.plan,
+    features: featuresOf(t.plan),
+    splitKitchenBar: t.splitKitchenBar,
+    splitActive: t.splitKitchenBar && hasFeature(t.plan, 'kitchen_bar_split'),
   };
 }
 
@@ -69,6 +77,10 @@ export class SettingsService {
       });
     } catch {
       throw new BadRequestException('Moneda o idioma no válidos (ej: ARS y es-AR)');
+    }
+
+    if (input.splitKitchenBar === true && !hasFeature(current.plan, 'kitchen_bar_split')) {
+      throw new ForbiddenException(`Tu plan no incluye "${FEATURE_LABELS.kitchen_bar_split}"`);
     }
 
     const morning = input.shiftMorningStart ?? current.shiftMorningStart;
@@ -99,6 +111,7 @@ export class SettingsService {
         shiftMorningStart: input.shiftMorningStart,
         shiftAfternoonStart: input.shiftAfternoonStart,
         shiftNightStart: input.shiftNightStart,
+        splitKitchenBar: input.splitKitchenBar,
       },
     });
     return mapSettings(tenant);

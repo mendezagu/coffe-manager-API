@@ -8,6 +8,7 @@ import { MenuModule } from './menu/menu.module';
 import { WaitersModule } from './waiters/waiters.module';
 import { SalesModule } from './sales/sales.module';
 import { ReportsModule } from './reports/reports.module';
+import { CategoriesModule } from './categories/categories.module';
 import { SectorsModule } from './sectors/sectors.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -25,6 +26,7 @@ import { SettingsModule } from './settings/settings.module';
     WaitersModule,
     SalesModule,
     ReportsModule,
+    CategoriesModule,
     SectorsModule,
     AuthModule,
     UsersModule,

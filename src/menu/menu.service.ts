@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { mapMenuItem } from '../common/mappers';
@@ -20,12 +20,15 @@ export class MenuService {
         price: createMenuItemDto.price,
         quantity: createMenuItemDto.quantity ?? 1,
         isPromo: createMenuItemDto.isPromo ?? false,
+        categoryId: (await this.resolveCategoryId(tenantId, createMenuItemDto.categoryId)) ?? null,
       },
     });
     return mapMenuItem(item);
   }
 
   async update(tenantId: string, id: string, updateMenuItemDto: any) {
+    // categoryId: undefined = no tocar, null/'' = quitar la categoría, id = asignarla
+    const categoryId = await this.resolveCategoryId(tenantId, updateMenuItemDto.categoryId);
     try {
       const item = await this.prisma.menuItem.update({
         where: { id, tenantId },
@@ -34,6 +37,7 @@ export class MenuService {
           price: updateMenuItemDto.price,
           // undefined = Prisma no toca la columna (ediciones parciales)
           isPromo: updateMenuItemDto.isPromo,
+          categoryId,
         },
       });
       return mapMenuItem(item);
@@ -44,6 +48,15 @@ export class MenuService {
       }
       throw error;
     }
+  }
+
+  // undefined si no vino el campo, null para quitarla, o el id validado (debe ser del mismo negocio)
+  private async resolveCategoryId(tenantId: string, categoryId: unknown): Promise<string | null | undefined> {
+    if (categoryId === undefined) return undefined;
+    if (categoryId === null || categoryId === '') return null;
+    const category = await this.prisma.category.findFirst({ where: { id: String(categoryId), tenantId } });
+    if (!category) throw new NotFoundException('Categoría no encontrada');
+    return category.id;
   }
 
   async remove(tenantId: string, id: string): Promise<{ message: string }> {
