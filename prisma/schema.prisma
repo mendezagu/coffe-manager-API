@@ -46,6 +46,8 @@ model MenuItem {
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
+  modifierGroups MenuItemModifierGroup[]
+
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -95,9 +97,13 @@ model Order {
   note     String @default("")
 
   // estado en cocina; updatedAt se mueve al cambiar de estado (sirve para "listo hace X")
-  status    OrderStatus @default(PENDING)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @default(now()) @updatedAt
+  status OrderStatus @default(PENDING)
+
+  // Modificadores elegidos: [{ groupId, group, optionId, name, priceDelta }]. Es una copia del
+  // momento del pedido, así editar o borrar el modificador después no cambia lo ya pedido.
+  modifiers Json     @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@map("orders")
 }
@@ -165,13 +171,14 @@ model Tenant {
   // Solo tiene efecto si el plan incluye la función.
   splitKitchenBar Boolean @default(false)
 
-  waiters    Waiter[]
-  sectors    Sector[]
-  menuItems  MenuItem[]
-  categories Category[]
-  tables     Table[]
-  sales      Sale[]
-  users      User[]
+  waiters        Waiter[]
+  sectors        Sector[]
+  menuItems      MenuItem[]
+  categories     Category[]
+  modifierGroups ModifierGroup[]
+  tables         Table[]
+  sales          Sale[]
+  users          User[]
 
   @@map("tenants")
 }
@@ -221,6 +228,9 @@ model SaleItem {
   // precio x cantidad con el descuento del ítem (todavía sin el descuento general)
   lineTotal   Float
 
+  // Mismos modificadores que tenía la orden. unitPrice ya incluye sus precios.
+  modifiers Json @default("[]")
+
   @@index([saleId])
   @@map("sale_items")
 }
@@ -246,4 +256,62 @@ model Category {
 
   @@unique([tenantId, name])
   @@map("categories")
+}
+
+enum ModifierSelection {
+  SINGLE // se elige una sola opción (ej: tamaño)
+  MULTIPLE // se pueden elegir varias (ej: extras)
+}
+
+// Grupo de opciones que se ofrece al pedir un plato: "Tamaño", "Leche", "Extras".
+// Un grupo se reutiliza en muchos platos (el mismo "Leche" para todos los cafés).
+model ModifierGroup {
+  id String @id @default(uuid())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name      String
+  selection ModifierSelection @default(SINGLE)
+  // obligatorio: el mozo no puede agregar el plato sin elegir (ej: el punto de la carne)
+  required  Boolean           @default(false)
+  position  Int               @default(0)
+
+  options ModifierOption[]
+  items   MenuItemModifierGroup[]
+
+  @@unique([tenantId, name])
+  @@map("modifier_groups")
+}
+
+model ModifierOption {
+  id String @id @default(uuid())
+
+  groupId String
+  group   ModifierGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  name       String
+  // lo que suma (o resta) al precio del plato; 0 si no cambia el precio
+  priceDelta Float   @default(0)
+  position   Int     @default(0)
+  // desactivar una opción la oculta del menú sin tocar lo ya pedido (ej: "se acabó la leche de almendras")
+  active     Boolean @default(true)
+
+  @@index([groupId])
+  @@map("modifier_options")
+}
+
+// Qué grupos ofrece cada plato
+model MenuItemModifierGroup {
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  groupId String
+  group   ModifierGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  position Int @default(0)
+
+  @@id([menuItemId, groupId])
+  @@index([groupId])
+  @@map("menu_item_modifier_groups")
 }

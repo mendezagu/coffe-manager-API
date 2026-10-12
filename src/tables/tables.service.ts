@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { mapTable, mapWaiter } from '../common/mappers';
+import { modifiersKey, resolveModifiers } from '../modifiers/modifiers.logic';
 
 const ORDERS_IN_ORDER = { orderBy: [{ createdAt: 'asc' as const }, { id: 'asc' as const }] };
 const FULL_INCLUDE = { orders: ORDERS_IN_ORDER, waiter: true, linkedTables: true, sector: true } as const;
@@ -113,13 +114,18 @@ export class TablesService {
         }
 
         const note = (item.note || '').trim();
+        // Opciones elegidas (ids): se validan contra lo que el plato ofrece y se guarda una copia
+        // con el nombre y el precio de este momento.
+        const modifiers = await resolveModifiers(tx, tenantId, menuItem.id, menuItem.name, item.modifiers);
 
         // Los ítems con nota nunca se fusionan con una línea existente: cada
         // aclaración (ej. "sin verduras") debe quedar en su propia línea. Tampoco se suma a
         // una línea que cocina ya tomó: lo nuevo es una línea aparte, pendiente.
-        const existingOrder = !note
-          ? await tx.order.findFirst({ where: { tableId: id, menuItemId: item.id, note: '', status: 'PENDING' } })
-          : undefined;
+        // Solo se fusionan líneas con las mismas opciones: un café grande y uno chico son líneas distintas.
+        const sameItemLines = !note
+          ? await tx.order.findMany({ where: { tableId: id, menuItemId: item.id, note: '', status: 'PENDING' } })
+          : [];
+        const existingOrder = sameItemLines.find((o) => modifiersKey(o.modifiers) === modifiersKey(modifiers));
 
         if (existingOrder) {
           await tx.order.update({
@@ -133,6 +139,7 @@ export class TablesService {
               menuItemId: item.id,
               quantity: item.quantity || 1,
               note,
+              modifiers: modifiers as unknown as Prisma.InputJsonValue,
             },
           });
         }

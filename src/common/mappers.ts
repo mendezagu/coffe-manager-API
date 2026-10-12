@@ -1,4 +1,5 @@
 import { MenuItem, Order, Sector, Table, Waiter } from '@prisma/client';
+import { readSnapshot } from '../modifiers/modifiers.logic';
 
 type OrderWithMenuItem = Order & { menuItem?: MenuItem | null };
 type TableWithRelations = Table & {
@@ -8,7 +9,7 @@ type TableWithRelations = Table & {
   sector?: Sector | null;
 };
 
-export function mapMenuItem(item: MenuItem) {
+export function mapMenuItem(item: MenuItem & { modifierGroups?: { groupId: string }[] }) {
   return {
     _id: item.id,
     name: item.name,
@@ -16,6 +17,8 @@ export function mapMenuItem(item: MenuItem) {
     quantity: item.quantity,
     isPromo: item.isPromo,
     categoryId: item.categoryId ?? null,
+    // ids de los modificadores que ofrece este plato (el detalle está en /api/modifiers)
+    modifierGroupIds: (item.modifierGroups ?? []).map((g) => g.groupId),
   };
 }
 
@@ -43,6 +46,7 @@ export function mapOrder(order: OrderWithMenuItem, populated: boolean) {
     quantity: order.quantity,
     note: order.note,
     status: order.status,
+    modifiers: readSnapshot(order.modifiers),
   };
 }
 

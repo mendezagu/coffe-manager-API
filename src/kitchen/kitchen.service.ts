@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { Destination, OrderStatus, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { hasFeature } from '../plans/plans';
+import { readSnapshot } from '../modifiers/modifiers.logic';
 
 // Las líneas ya listas se muestran un rato (para poder deshacer un error) y después salen del tablero.
 const READY_VISIBLE_MS = 60 * 60 * 1000;
@@ -56,6 +57,8 @@ export class KitchenService {
         itemName: o.menuItem?.name ?? 'Ítem eliminado',
         quantity: o.quantity,
         note: o.note,
+        // opciones elegidas (ej: "Grande", "Leche de almendras"), en el orden de los grupos
+        modifiers: readSnapshot(o.modifiers).map((m) => m.name),
         status: o.status,
         destination,
         createdAt: o.createdAt,

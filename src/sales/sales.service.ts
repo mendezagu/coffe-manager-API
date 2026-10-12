@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, Role, Sale, SaleItem } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { modifiersTotal, readSnapshot } from '../modifiers/modifiers.logic';
 
 export const PAYMENT_METHODS = ['efectivo', 'transferencia', 'qr', 'tarjeta'] as const;
 
@@ -49,6 +50,7 @@ export function mapSale(sale: SaleWithItems) {
         isPromo: i.isPromo,
         discountPct: i.discountPct,
         lineTotal: i.lineTotal,
+        modifiers: readSnapshot(i.modifiers).map((m) => ({ group: m.group, name: m.name, priceDelta: m.priceDelta })),
       })),
     }),
   };
@@ -130,7 +132,9 @@ export class SalesService {
           'Una de las órdenes es de un plato que ya no existe en el menú. Quitala de la mesa antes de cobrar.',
         );
       }
-      const { name, price, isPromo } = order.menuItem;
+      const { name, isPromo } = order.menuItem;
+      // Precio de una unidad: el del plato + lo que sumaron las opciones elegidas al pedirlo
+      const price = round2(order.menuItem.price + modifiersTotal(order.modifiers));
       // Las promos nunca llevan descuento, aunque llegue uno
       const discountPct = isPromo ? 0 : itemDiscounts.get(order.id) ?? 0;
       const lineGross = round2(price * order.quantity);
@@ -138,7 +142,16 @@ export class SalesService {
       gross += lineGross;
       lineSum += lineTotal;
       if (!isPromo) discountable += lineTotal;
-      return { name, unitPrice: price, quantity: order.quantity, note: order.note, isPromo, discountPct, lineTotal };
+      return {
+        name,
+        unitPrice: price,
+        quantity: order.quantity,
+        note: order.note,
+        isPromo,
+        discountPct,
+        lineTotal,
+        modifiers: readSnapshot(order.modifiers) as unknown as Prisma.InputJsonValue,
+      };
     });
     const globalDiscountAmount = round2((discountable * globalPct) / 100);
     const totalAmount = round2(lineSum - globalDiscountAmount);
