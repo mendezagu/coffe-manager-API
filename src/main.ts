@@ -1,11 +1,17 @@
+import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Habilitar CORS
-  app.enableCors();
+  // Orígenes permitidos separados por coma (ej: https://miapp.com,http://localhost:4200).
+  // Sin CORS_ORIGINS se mantiene el comportamiento anterior (abierto) para no romper el desarrollo.
+  const origins = process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean);
+  app.enableCors(origins?.length ? { origin: origins } : undefined);
+
+  // Valida los DTOs con class-validator; ignora campos que el DTO no declara.
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
 
   // Puerto desde las variables de entorno
   const port = process.env.PORT || 3000;

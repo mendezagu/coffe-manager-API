@@ -38,6 +38,9 @@ model MenuItem {
 
 model Table {
   id        String  @id @default(uuid())
+  // orden fijo de las mesas: sin esto Postgres las devuelve en orden físico y una mesa
+  // editada (al ocuparla) saltaba al final de la lista
+  seq       Int     @default(autoincrement())
   name      String
   available Boolean @default(true)
 
@@ -69,6 +72,11 @@ model Order {
   quantity Int    @default(1)
   note     String @default("")
 
+  // estado en cocina; updatedAt se mueve al cambiar de estado (sirve para "listo hace X")
+  status    OrderStatus @default(PENDING)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @default(now()) @updatedAt
+
   @@map("orders")
 }
 
@@ -82,4 +90,29 @@ model Balance {
   date          DateTime @default(now())
 
   @@map("balances")
+}
+
+enum Role {
+  ADMIN
+  CASHIER
+  WAITER
+  KITCHEN
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@map("users")
+}
+
+enum OrderStatus {
+  PENDING
+  PREPARING
+  READY
 }

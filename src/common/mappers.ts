@@ -41,6 +41,7 @@ export function mapOrder(order: OrderWithMenuItem, populated: boolean) {
     menuItem: populated ? (order.menuItem ? mapMenuItem(order.menuItem) : null) : order.menuItemId,
     quantity: order.quantity,
     note: order.note,
+    status: order.status,
   };
 }
 

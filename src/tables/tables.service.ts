@@ -3,9 +3,10 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { mapTable, mapWaiter } from '../common/mappers';
 
-const FULL_INCLUDE = { orders: true, waiter: true, linkedTables: true, sector: true } as const;
+const ORDERS_IN_ORDER = { orderBy: [{ createdAt: 'asc' as const }, { id: 'asc' as const }] };
+const FULL_INCLUDE = { orders: ORDERS_IN_ORDER, waiter: true, linkedTables: true, sector: true } as const;
 const POPULATED_INCLUDE = {
-  orders: { include: { menuItem: true } },
+  orders: { include: { menuItem: true }, ...ORDERS_IN_ORDER },
   waiter: true,
   linkedTables: true,
   sector: true,
@@ -20,7 +21,7 @@ export class TablesService {
   constructor(private prisma: PrismaService) {}
 
   async findAll() {
-    const tables = await this.prisma.table.findMany({ include: FULL_INCLUDE });
+    const tables = await this.prisma.table.findMany({ include: FULL_INCLUDE, orderBy: { seq: 'asc' } });
     return tables.map(t => mapTable(t, { populateOrders: false }));
   }
 
@@ -106,9 +107,10 @@ export class TablesService {
         const note = (item.note || '').trim();
 
         // Los ítems con nota nunca se fusionan con una línea existente: cada
-        // aclaración (ej. "sin verduras") debe quedar en su propia línea.
+        // aclaración (ej. "sin verduras") debe quedar en su propia línea. Tampoco se suma a
+        // una línea que cocina ya tomó: lo nuevo es una línea aparte, pendiente.
         const existingOrder = !note
-          ? await tx.order.findFirst({ where: { tableId: id, menuItemId: item.id, note: '' } })
+          ? await tx.order.findFirst({ where: { tableId: id, menuItemId: item.id, note: '', status: 'PENDING' } })
           : undefined;
 
         if (existingOrder) {

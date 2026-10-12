@@ -1,5 +1,7 @@
 import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
 import { TablesService } from './tables.service';
+import { Role } from '@prisma/client';
+import { Roles } from '../auth/roles.decorator';
 
 @Controller('api/tables')
 export class TablesController {
@@ -25,6 +27,7 @@ export class TablesController {
     }
   }
 
+  @Roles(Role.ADMIN)
   @Post()
   async create(@Body() createTableDto: any) {
     try {
@@ -35,6 +38,7 @@ export class TablesController {
     }
   }
 
+  @Roles(Role.ADMIN)
   @Put(':id')
   async update(@Param('id') id: string, @Body() updateTableDto: any) {
     try {
@@ -45,6 +49,7 @@ export class TablesController {
     }
   }
 
+  @Roles(Role.ADMIN)
   @Delete(':id')
   async remove(@Param('id') id: string) {
     try {
@@ -55,6 +60,7 @@ export class TablesController {
     }
   }
 
+  @Roles(Role.ADMIN, Role.CASHIER, Role.WAITER)
   @Put(':id/add-items')
   async addItems(@Param('id') id: string, @Body() body: { items: any[] }) {
     try {
@@ -85,6 +91,7 @@ export class TablesController {
     }
   }
 
+  @Roles(Role.ADMIN, Role.CASHIER, Role.WAITER)
   @Put(':id/assign-waiter')
   async assignWaiter(@Param('id') id: string, @Body() body: { waiterId: string; waiterName: string }) {
     try {
@@ -95,6 +102,7 @@ export class TablesController {
     }
   }
 
+  @Roles(Role.ADMIN, Role.CASHIER, Role.WAITER)
   @Put(':id/link-tables')
   async linkTables(@Param('id') id: string, @Body() body: { linkedTableIds: string[] }) {
     try {
@@ -105,6 +113,7 @@ export class TablesController {
     }
   }
 
+  @Roles(Role.ADMIN, Role.CASHIER, Role.WAITER)
   @Put(':id/unlink-tables')
   async unlinkTables(@Param('id') id: string, @Body() body: { linkedTableIds: string[] }) {
     try {
@@ -115,6 +124,7 @@ export class TablesController {
     }
   }
 
+  @Roles(Role.ADMIN, Role.CASHIER, Role.WAITER)
   @Put(':id/update-quantities')
   async updateQuantities(@Param('id') id: string, @Body() body: { updates: { orderId: string; quantity: number }[] }) {
     try {
@@ -125,6 +135,7 @@ export class TablesController {
     }
   }
 
+  @Roles(Role.ADMIN, Role.CASHIER, Role.WAITER)
   @Put(':id/remove-order')
   async removeOrder(@Param('id') id: string, @Body() body: { orderIds: string[] }) {
     try {
@@ -135,6 +146,7 @@ export class TablesController {
     }
   }
 
+  @Roles(Role.ADMIN, Role.CASHIER)
   @Put(':id/reset')
   async resetTable(@Param('id') id: string) {
     try {

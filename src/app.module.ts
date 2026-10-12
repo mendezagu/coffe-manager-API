@@ -8,6 +8,9 @@ import { MenuModule } from './menu/menu.module';
 import { WaitersModule } from './waiters/waiters.module';
 import { BalanceModule } from './balance/balance.module';
 import { SectorsModule } from './sectors/sectors.module';
+import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
+import { KitchenModule } from './kitchen/kitchen.module';
 
 @Module({
   imports: [
@@ -20,6 +23,9 @@ import { SectorsModule } from './sectors/sectors.module';
     WaitersModule,
     BalanceModule,
     SectorsModule,
+    AuthModule,
+    UsersModule,
+    KitchenModule,
   ],
   controllers: [AppController],
   providers: [AppService],
