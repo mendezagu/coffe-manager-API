@@ -1,29 +1,59 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { MenuItem, MenuItemDocument } from '../menu-item/schemas/menu-item.schema';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { mapMenuItem } from '../common/mappers';
 
 @Injectable()
 export class MenuService {
-  constructor(
-    @InjectModel(MenuItem.name) private menuItemModel: Model<MenuItemDocument>,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
-  async findAll(): Promise<MenuItem[]> {
-    return this.menuItemModel.find().exec();
+  async findAll() {
+    const items = await this.prisma.menuItem.findMany();
+    return items.map(mapMenuItem);
   }
 
-  async create(createMenuItemDto: any): Promise<MenuItem> {
-    const newItem = new this.menuItemModel(createMenuItemDto);
-    return newItem.save();
+  async create(createMenuItemDto: any) {
+    const item = await this.prisma.menuItem.create({
+      data: {
+        name: createMenuItemDto.name,
+        price: createMenuItemDto.price,
+        quantity: createMenuItemDto.quantity ?? 1,
+        isPromo: createMenuItemDto.isPromo ?? false,
+      },
+    });
+    return mapMenuItem(item);
   }
 
-  async update(id: string, updateMenuItemDto: any): Promise<MenuItem> {
-    return this.menuItemModel.findByIdAndUpdate(id, updateMenuItemDto, { new: true }).exec();
+  async update(id: string, updateMenuItemDto: any) {
+    try {
+      const item = await this.prisma.menuItem.update({
+        where: { id },
+        data: {
+          name: updateMenuItemDto.name,
+          price: updateMenuItemDto.price,
+          // undefined = Prisma no toca la columna (ediciones parciales)
+          isPromo: updateMenuItemDto.isPromo,
+        },
+      });
+      return mapMenuItem(item);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        // Igual que antes: findByIdAndUpdate de Mongoose no tira 404, devuelve null
+        return null;
+      }
+      throw error;
+    }
   }
 
   async remove(id: string): Promise<{ message: string }> {
-    await this.menuItemModel.findByIdAndDelete(id).exec();
+    try {
+      await this.prisma.menuItem.delete({ where: { id } });
+    } catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025')) {
+        throw error;
+      }
+      // Igual que antes: no había chequeo de existencia, el mensaje se devuelve igual
+    }
     return { message: 'Ítem eliminado' };
   }
 }

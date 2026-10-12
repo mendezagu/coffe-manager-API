@@ -1,233 +1,260 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { Table, TableDocument } from '../table/schemas/table.schema';
-import { MenuItem, MenuItemDocument } from '../menu-item/schemas/menu-item.schema';
-import { Waiter, WaiterDocument } from '../waiter/schemas/waiter.schema';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { mapTable, mapWaiter } from '../common/mappers';
+
+const FULL_INCLUDE = { orders: true, waiter: true, linkedTables: true, sector: true } as const;
+const POPULATED_INCLUDE = {
+  orders: { include: { menuItem: true } },
+  waiter: true,
+  linkedTables: true,
+  sector: true,
+} as const;
+
+function isNotFoundError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025';
+}
 
 @Injectable()
 export class TablesService {
-  constructor(
-    @InjectModel(Table.name) private tableModel: Model<TableDocument>,
-    @InjectModel(MenuItem.name) private menuItemModel: Model<MenuItemDocument>,
-    @InjectModel(Waiter.name) private waiterModel: Model<WaiterDocument>,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
-  async findAll(): Promise<Table[]> {
-    const tables = await this.tableModel.find().exec();
-    // Poblar waiterName dinámicamente si hay waiterId
-    for (const table of tables) {
-      if (table.waiterId) {
-        const waiter = await this.waiterModel.findById(table.waiterId).exec();
-        table.waiterName = waiter ? waiter.name : null;
-      } else {
-        table.waiterName = null;
-      }
-    }
-    return tables;
+  async findAll() {
+    const tables = await this.prisma.table.findMany({ include: FULL_INCLUDE });
+    return tables.map(t => mapTable(t, { populateOrders: false }));
   }
 
-  async findOne(id: string): Promise<Table> {
-    const table = await this.tableModel.findById(id).populate('orders.menuItem').exec();
+  async findOne(id: string) {
+    const table = await this.prisma.table.findUnique({ where: { id }, include: POPULATED_INCLUDE });
     if (!table) {
       throw new NotFoundException('Mesa no encontrada');
     }
-    return table;
+    return mapTable(table, { populateOrders: true });
   }
 
-  async create(createTableDto: any): Promise<Table> {
-    const newTable = new this.tableModel(createTableDto);
-    return newTable.save();
+  async create(createTableDto: any) {
+    const sectorId = await this.resolveSectorId(createTableDto.sectorId);
+    const table = await this.prisma.table.create({
+      data: {
+        name: createTableDto.name,
+        available: createTableDto.available ?? true,
+        sectorId: sectorId ?? null,
+      },
+      include: { sector: true },
+    });
+    return mapTable(table, { populateOrders: false });
   }
 
-  async update(id: string, updateTableDto: any): Promise<Table> {
-    const updatedTable = await this.tableModel.findByIdAndUpdate(id, updateTableDto, { new: true }).exec();
-    if (!updatedTable) {
-      throw new NotFoundException('Mesa no encontrada');
+  async update(id: string, updateTableDto: any) {
+    // sectorId: undefined = no tocar, null/'' = quitar el sector, id = asignar ese sector
+    const sectorId = await this.resolveSectorId(updateTableDto.sectorId);
+    try {
+      const table = await this.prisma.table.update({
+        where: { id },
+        data: {
+          name: updateTableDto.name,
+          available: updateTableDto.available,
+          sectorId,
+        },
+        include: FULL_INCLUDE,
+      });
+      return mapTable(table, { populateOrders: false });
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        throw new NotFoundException('Mesa no encontrada');
+      }
+      throw error;
     }
-    return updatedTable;
+  }
+
+  // Devuelve undefined si no vino el campo, null si se quiere quitar el sector, o el id validado.
+  private async resolveSectorId(sectorId: unknown): Promise<string | null | undefined> {
+    if (sectorId === undefined) return undefined;
+    if (sectorId === null || sectorId === '') return null;
+    const sector = await this.prisma.sector.findUnique({ where: { id: String(sectorId) } });
+    if (!sector) {
+      throw new NotFoundException('Sector no encontrado');
+    }
+    return sector.id;
   }
 
   async remove(id: string): Promise<{ message: string }> {
-    const deletedTable = await this.tableModel.findByIdAndDelete(id).exec();
-    if (!deletedTable) {
-      throw new NotFoundException('Mesa no encontrada');
+    try {
+      await this.prisma.table.delete({ where: { id } });
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        throw new NotFoundException('Mesa no encontrada');
+      }
+      throw error;
     }
     return { message: 'Mesa eliminada' };
   }
 
-  async addItems(id: string, items: any[]): Promise<Table> {
-    const table = await this.tableModel.findById(id).exec();
+  async addItems(id: string, items: any[]) {
+    const table = await this.prisma.table.findUnique({ where: { id }, include: { orders: true } });
     if (!table) {
       throw new NotFoundException('Mesa no encontrada');
     }
 
-    for (let item of items) {
-      const menuItem = await this.menuItemModel.findById(item.id).exec();
-      if (!menuItem) {
-        throw new NotFoundException(`Ítem con ID ${item.id} no encontrado`);
+    await this.prisma.$transaction(async tx => {
+      for (const item of items) {
+        const menuItem = await tx.menuItem.findUnique({ where: { id: item.id } });
+        if (!menuItem) {
+          throw new NotFoundException(`Ítem con ID ${item.id} no encontrado`);
+        }
+
+        const note = (item.note || '').trim();
+
+        // Los ítems con nota nunca se fusionan con una línea existente: cada
+        // aclaración (ej. "sin verduras") debe quedar en su propia línea.
+        const existingOrder = !note
+          ? await tx.order.findFirst({ where: { tableId: id, menuItemId: item.id, note: '' } })
+          : undefined;
+
+        if (existingOrder) {
+          await tx.order.update({
+            where: { id: existingOrder.id },
+            data: { quantity: existingOrder.quantity + (item.quantity || 1) },
+          });
+        } else {
+          await tx.order.create({
+            data: {
+              tableId: id,
+              menuItemId: item.id,
+              quantity: item.quantity || 1,
+              note,
+            },
+          });
+        }
       }
+    });
 
-      const note = (item.note || '').trim();
-
-      // Los ítems con nota nunca se fusionan con una línea existente: cada
-      // aclaración (ej. "sin verduras") debe quedar en su propia línea.
-      const existingOrder = !note
-        ? table.orders.find(order => order.menuItem.toString() === item.id && !order.note)
-        : undefined;
-
-      if (existingOrder) {
-        existingOrder.quantity += item.quantity || 1;
-      } else {
-        table.orders.push({
-          menuItem: menuItem._id as any,
-          quantity: item.quantity || 1,
-          note,
-        } as any);
-      }
-    }
-
-    await table.save();
-    const updatedTable = await this.tableModel.findById(id).populate('orders.menuItem').exec();
-    return updatedTable;
+    const updatedTable = await this.prisma.table.findUnique({ where: { id }, include: POPULATED_INCLUDE });
+    return mapTable(updatedTable, { populateOrders: true });
   }
 
-  async getWaiterByName(name: string): Promise<Waiter> {
-    const waiter = await this.waiterModel.findOne({ name }).exec();
+  async getWaiterByName(name: string) {
+    const waiter = await this.prisma.waiter.findFirst({ where: { name } });
     if (!waiter) {
       throw new NotFoundException('Mozo no encontrado');
     }
-    return waiter;
+    return mapWaiter(waiter);
   }
 
-  async getWaiterById(id: string): Promise<Waiter> {
-    const waiter = await this.waiterModel.findById(id).exec();
+  async getWaiterById(id: string) {
+    const waiter = await this.prisma.waiter.findUnique({ where: { id } });
     if (!waiter) {
       throw new NotFoundException('Mozo no encontrado');
     }
-    return waiter;
+    return mapWaiter(waiter);
   }
 
-  async assignWaiter(id: string, waiterId: string, waiterName: string): Promise<{ message: string; table: Table }> {
-    const table = await this.tableModel.findById(id).exec();
-    if (!table) {
-      throw new NotFoundException('Mesa no encontrada');
-    }
-
-    table.waiterId = waiterId;
-    table.waiterName = waiterName;
-    await table.save();
-
-    return { message: 'Mozo asignado correctamente', table };
-  }
-
-  async linkTables(id: string, linkedTableIds: string[]): Promise<{ message: string; table: Table }> {
-    const table = await this.tableModel.findById(id).exec();
-    if (!table) {
-      throw new NotFoundException('Mesa no encontrada');
-    }
-
-    for (let linkedTableId of linkedTableIds) {
-      const linkedTable = await this.tableModel.findById(linkedTableId).exec();
-      if (!linkedTable) {
-        throw new NotFoundException(`Mesa con ID ${linkedTableId} no encontrada`);
+  async assignWaiter(id: string, waiterId: string, _waiterName: string) {
+    try {
+      const table = await this.prisma.table.update({
+        where: { id },
+        data: { waiterId },
+        include: FULL_INCLUDE,
+      });
+      return { message: 'Mozo asignado correctamente', table: mapTable(table, { populateOrders: false }) };
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        throw new NotFoundException('Mesa no encontrada');
       }
-
-      linkedTable.controlledBy = id;
-      linkedTable.available = false;
-      await linkedTable.save();
+      throw error;
     }
-
-    table.linkedTables = linkedTableIds;
-    await table.save();
-
-    return { message: 'Mesas vinculadas correctamente', table };
   }
 
-  async unlinkTables(id: string, linkedTableIds: string[]): Promise<{ message: string; table: Table }> {
-    const table = await this.tableModel.findById(id).exec();
-    if (!table) {
+  async linkTables(id: string, linkedTableIds: string[]) {
+    const parent = await this.prisma.table.findUnique({ where: { id } });
+    if (!parent) {
       throw new NotFoundException('Mesa no encontrada');
     }
 
-    for (let linkedTableId of linkedTableIds) {
-      const linkedTable = await this.tableModel.findById(linkedTableId).exec();
-      if (linkedTable) {
-        linkedTable.controlledBy = undefined;
-        linkedTable.available = true;
-        await linkedTable.save();
+    await this.prisma.$transaction(async tx => {
+      for (const linkedTableId of linkedTableIds) {
+        const linkedTable = await tx.table.findUnique({ where: { id: linkedTableId } });
+        if (!linkedTable) {
+          throw new NotFoundException(`Mesa con ID ${linkedTableId} no encontrada`);
+        }
+        await tx.table.update({
+          where: { id: linkedTableId },
+          data: { controlledById: id, available: false },
+        });
       }
-    }
+    });
 
-    table.linkedTables = table.linkedTables.filter(id => !linkedTableIds.includes(id));
-    await table.save();
-
-    return { message: 'Mesas desvinculadas correctamente', table };
+    const table = await this.prisma.table.findUnique({ where: { id }, include: FULL_INCLUDE });
+    return { message: 'Mesas vinculadas correctamente', table: mapTable(table, { populateOrders: false }) };
   }
 
-  async updateOrderQuantities(
-    id: string,
-    updates: { orderId: string; quantity: number }[],
-  ): Promise<Table> {
-    const table = await this.tableModel.findById(id).exec();
+  async unlinkTables(id: string, linkedTableIds: string[]) {
+    const parent = await this.prisma.table.findUnique({ where: { id } });
+    if (!parent) {
+      throw new NotFoundException('Mesa no encontrada');
+    }
+
+    // updateMany, no unmatched ids son ignorados en silencio (asimetría real con linkTables)
+    await this.prisma.table.updateMany({
+      where: { id: { in: linkedTableIds } },
+      data: { controlledById: null, available: true },
+    });
+
+    const table = await this.prisma.table.findUnique({ where: { id }, include: FULL_INCLUDE });
+    return { message: 'Mesas desvinculadas correctamente', table: mapTable(table, { populateOrders: false }) };
+  }
+
+  async updateOrderQuantities(id: string, updates: { orderId: string; quantity: number }[]) {
+    const table = await this.prisma.table.findUnique({ where: { id } });
     if (!table) {
       throw new NotFoundException('Mesa no encontrada');
     }
 
     for (const { orderId, quantity } of updates) {
-      const order = table.orders.find(o => (o as any)._id.toString() === orderId);
-      if (order) {
-        order.quantity = quantity;
-      }
+      // updateMany + tableId en el where: ids que no matchean (o pertenecen a otra mesa) se ignoran en silencio
+      await this.prisma.order.updateMany({
+        where: { id: orderId, tableId: id },
+        data: { quantity },
+      });
     }
 
-    await table.save();
-    const updatedTable = await this.tableModel.findById(id).populate('orders.menuItem').exec();
-    return updatedTable;
+    const updatedTable = await this.prisma.table.findUnique({ where: { id }, include: POPULATED_INCLUDE });
+    return mapTable(updatedTable, { populateOrders: true });
   }
 
-  async removeOrder(id: string, orderIds: string[]): Promise<{ message: string; table: Table }> {
-    const table = await this.tableModel.findById(id).exec();
+  async removeOrder(id: string, orderIds: string[]) {
+    const table = await this.prisma.table.findUnique({ where: { id } });
     if (!table) {
       throw new NotFoundException('Mesa no encontrada');
     }
 
-    console.log('ID de la mesa:', id);
-    console.log('Órdenes a eliminar:', orderIds);
+    await this.prisma.order.deleteMany({
+      where: { id: { in: orderIds }, tableId: id },
+    });
 
-    const ordersToKeep = table.orders.filter(order => !orderIds.includes((order as any)._id.toString()));
-    console.log('Órdenes que quedan después de la eliminación:', ordersToKeep);
-
-    table.orders = ordersToKeep;
-    await table.save();
-
-    return { message: 'Órdenes eliminadas correctamente', table };
+    const updatedTable = await this.prisma.table.findUnique({ where: { id }, include: FULL_INCLUDE });
+    return { message: 'Órdenes eliminadas correctamente', table: mapTable(updatedTable, { populateOrders: false }) };
   }
 
-  async resetTable(id: string): Promise<{ message: string; table: Table }> {
-    const table = await this.tableModel.findById(id).exec();
+  async resetTable(id: string) {
+    const table = await this.prisma.table.findUnique({ where: { id } });
     if (!table) {
       throw new NotFoundException('Mesa no encontrada');
     }
 
-    table.orders = [];
+    await this.prisma.$transaction([
+      this.prisma.order.deleteMany({ where: { tableId: id } }),
+      this.prisma.table.updateMany({
+        where: { controlledById: id },
+        data: { controlledById: null, available: true },
+      }),
+      this.prisma.table.update({
+        where: { id },
+        data: { available: true, waiterId: null },
+      }),
+    ]);
 
-    for (let linkedTableId of table.linkedTables) {
-      const linkedTable = await this.tableModel.findById(linkedTableId).exec();
-      if (linkedTable) {
-        linkedTable.controlledBy = undefined;
-        linkedTable.available = true;
-        await linkedTable.save();
-      }
-    }
-
-    table.linkedTables = [];
-    table.available = true;
-    table.waiterId = undefined;
-    table.waiterName = undefined;
-
-    await table.save();
-
-    return { message: 'Mesa reseteada correctamente', table };
+    const updatedTable = await this.prisma.table.findUnique({ where: { id }, include: FULL_INCLUDE });
+    return { message: 'Mesa reseteada correctamente', table: mapTable(updatedTable, { populateOrders: false }) };
   }
 }

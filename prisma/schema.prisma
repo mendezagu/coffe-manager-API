@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Waiter {
+  id     String  @id @default(uuid())
+  name   String
+  tables Table[]
+
+  @@map("waiters")
+}
+
+model Sector {
+  id       String  @id @default(uuid())
+  name     String  @unique
+  // orden en que se muestran los sectores (0 = primero); lo define el usuario arrastrando
+  position Int     @default(0)
+  tables   Table[]
+
+  @@map("sectors")
+}
+
+model MenuItem {
+  id       String  @id @default(uuid())
+  name     String
+  price    Float
+  quantity Int     @default(1)
+  isPromo  Boolean @default(false)
+  orders   Order[]
+
+  @@map("menu_items")
+}
+
+model Table {
+  id        String  @id @default(uuid())
+  name      String
+  available Boolean @default(true)
+
+  waiterId String?
+  waiter   Waiter? @relation(fields: [waiterId], references: [id], onDelete: SetNull)
+
+  // sector opcional; si se elimina el sector, la mesa queda "sin sector"
+  sectorId String?
+  sector   Sector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+
+  // una mesa "hija" tiene un solo controlador; un controlador puede tener muchas hijas
+  controlledById String?
+  controlledBy   Table?  @relation("TableHierarchy", fields: [controlledById], references: [id], onDelete: SetNull)
+  linkedTables   Table[] @relation("TableHierarchy")
+
+  orders Order[]
+
+  @@map("tables")
+}
+
+model Order {
+  id      String @id @default(uuid())
+  tableId String
+  table   Table  @relation(fields: [tableId], references: [id], onDelete: Cascade)
+
+  menuItemId String?
+  menuItem   MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+
+  quantity Int    @default(1)
+  note     String @default("")
+
+  @@map("orders")
+}
+
+model Balance {
+  id            String   @id @default(uuid())
+  orderId       String   @unique
+  tableName     String
+  waiterName    String
+  totalAmount   Float
+  paymentMethod String
+  date          DateTime @default(now())
+
+  @@map("balances")
+}
