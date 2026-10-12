@@ -1,32 +1,33 @@
 import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
-import { MenuService } from './menu.service';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
+import { TenantId } from '../auth/tenant.decorator';
+import { MenuService } from './menu.service';
 
 @Controller('api/menu')
 export class MenuController {
   constructor(private readonly menuService: MenuService) {}
 
   @Get()
-  async findAll() {
-    return await this.menuService.findAll();
+  findAll(@TenantId() tenantId: string) {
+    return this.menuService.findAll(tenantId);
   }
 
   @Roles(Role.ADMIN)
   @Post()
-  async create(@Body() createMenuItemDto: any) {
-    return await this.menuService.create(createMenuItemDto);
+  create(@TenantId() tenantId: string, @Body() createMenuItemDto: any) {
+    return this.menuService.create(tenantId, createMenuItemDto);
   }
 
   @Roles(Role.ADMIN)
   @Put(':id')
-  async update(@Param('id') id: string, @Body() updateMenuItemDto: any) {
-    return await this.menuService.update(id, updateMenuItemDto);
+  update(@TenantId() tenantId: string, @Param('id') id: string, @Body() updateMenuItemDto: any) {
+    return this.menuService.update(tenantId, id, updateMenuItemDto);
   }
 
   @Roles(Role.ADMIN)
   @Delete(':id')
-  async remove(@Param('id') id: string) {
-    return await this.menuService.remove(id);
+  remove(@TenantId() tenantId: string, @Param('id') id: string) {
+    return this.menuService.remove(tenantId, id);
   }
 }

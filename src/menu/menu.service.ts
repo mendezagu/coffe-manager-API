@@ -7,14 +7,15 @@ import { mapMenuItem } from '../common/mappers';
 export class MenuService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll() {
-    const items = await this.prisma.menuItem.findMany();
+  async findAll(tenantId: string) {
+    const items = await this.prisma.menuItem.findMany({ where: { tenantId } });
     return items.map(mapMenuItem);
   }
 
-  async create(createMenuItemDto: any) {
+  async create(tenantId: string, createMenuItemDto: any) {
     const item = await this.prisma.menuItem.create({
       data: {
+        tenantId,
         name: createMenuItemDto.name,
         price: createMenuItemDto.price,
         quantity: createMenuItemDto.quantity ?? 1,
@@ -24,10 +25,10 @@ export class MenuService {
     return mapMenuItem(item);
   }
 
-  async update(id: string, updateMenuItemDto: any) {
+  async update(tenantId: string, id: string, updateMenuItemDto: any) {
     try {
       const item = await this.prisma.menuItem.update({
-        where: { id },
+        where: { id, tenantId },
         data: {
           name: updateMenuItemDto.name,
           price: updateMenuItemDto.price,
@@ -45,15 +46,9 @@ export class MenuService {
     }
   }
 
-  async remove(id: string): Promise<{ message: string }> {
-    try {
-      await this.prisma.menuItem.delete({ where: { id } });
-    } catch (error) {
-      if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025')) {
-        throw error;
-      }
-      // Igual que antes: no había chequeo de existencia, el mensaje se devuelve igual
-    }
+  async remove(tenantId: string, id: string): Promise<{ message: string }> {
+    // deleteMany no falla si no existe: el mensaje se devuelve igual, como antes
+    await this.prisma.menuItem.deleteMany({ where: { id, tenantId } });
     return { message: 'Ítem eliminado' };
   }
 }

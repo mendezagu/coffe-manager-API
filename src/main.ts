@@ -1,9 +1,13 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { json } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+
+  // 1 MB: alcanza para el logo del negocio (que el frontend achica antes de enviarlo)
+  app.use(json({ limit: '1mb' }));
 
   // Orígenes permitidos separados por coma (ej: https://miapp.com,http://localhost:4200).
   // Sin CORS_ORIGINS se mantiene el comportamiento anterior (abierto) para no romper el desarrollo.

@@ -12,16 +12,25 @@ model Waiter {
   name   String
   tables Table[]
 
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
   @@map("waiters")
 }
 
 model Sector {
   id       String  @id @default(uuid())
-  name     String  @unique
+  name     String
   // orden en que se muestran los sectores (0 = primero); lo define el usuario arrastrando
   position Int     @default(0)
   tables   Table[]
 
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // el nombre es único dentro de cada negocio, no en toda la base
+  @@unique([tenantId, name])
   @@map("sectors")
 }
 
@@ -33,6 +42,10 @@ model MenuItem {
   isPromo  Boolean @default(false)
   orders   Order[]
 
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
   @@map("menu_items")
 }
 
@@ -58,6 +71,10 @@ model Table {
 
   orders Order[]
 
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
   @@map("tables")
 }
 
@@ -82,13 +99,17 @@ model Order {
 
 model Balance {
   id            String   @id @default(uuid())
-  orderId       String   @unique
+  orderId       String
   tableName     String
   waiterName    String
   totalAmount   Float
   paymentMethod String
   date          DateTime @default(now())
 
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, orderId])
   @@map("balances")
 }
 
@@ -108,6 +129,10 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
   @@map("users")
 }
 
@@ -115,4 +140,41 @@ enum OrderStatus {
   PENDING
   PREPARING
   READY
+}
+
+// Un negocio (restaurante). Todos los datos del sistema cuelgan de un Tenant, y la API
+// filtra siempre por el tenantId del usuario logueado.
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  // Datos para tickets y comandas
+  legalName    String  @default("")
+  taxIdLabel   String  @default("CUIT")
+  taxId        String  @default("")
+  address      String  @default("")
+  city         String  @default("")
+  postalCode   String  @default("")
+  phone        String  @default("")
+  ticketFooter String  @default("")
+  logoUrl      String?
+
+  // Formato de dinero
+  currencyCode String @default("ARS")
+  locale       String @default("es-AR")
+
+  // Hora (0-23) en que arranca cada turno
+  shiftMorningStart   Int @default(6)
+  shiftAfternoonStart Int @default(12)
+  shiftNightStart     Int @default(18)
+
+  waiters   Waiter[]
+  sectors   Sector[]
+  menuItems MenuItem[]
+  tables    Table[]
+  balances  Balance[]
+  users     User[]
+
+  @@map("tenants")
 }

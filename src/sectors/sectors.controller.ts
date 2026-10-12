@@ -1,39 +1,40 @@
 import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
-import { SectorsService } from './sectors.service';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
+import { TenantId } from '../auth/tenant.decorator';
+import { SectorsService } from './sectors.service';
 
 @Controller('api/sectors')
 export class SectorsController {
   constructor(private readonly sectorsService: SectorsService) {}
 
   @Get()
-  async findAll() {
-    return await this.sectorsService.findAll();
+  findAll(@TenantId() tenantId: string) {
+    return this.sectorsService.findAll(tenantId);
   }
 
   // Debe ir antes de ':id' para que "reorder" no se interprete como un id
   @Roles(Role.ADMIN)
   @Put('reorder')
-  async reorder(@Body() reorderSectorsDto: any) {
-    return await this.sectorsService.reorder(reorderSectorsDto?.ids);
+  reorder(@TenantId() tenantId: string, @Body() reorderSectorsDto: any) {
+    return this.sectorsService.reorder(tenantId, reorderSectorsDto?.ids);
   }
 
   @Roles(Role.ADMIN)
   @Post()
-  async create(@Body() createSectorDto: any) {
-    return await this.sectorsService.create(createSectorDto);
+  create(@TenantId() tenantId: string, @Body() createSectorDto: any) {
+    return this.sectorsService.create(tenantId, createSectorDto);
   }
 
   @Roles(Role.ADMIN)
   @Put(':id')
-  async update(@Param('id') id: string, @Body() updateSectorDto: any) {
-    return await this.sectorsService.update(id, updateSectorDto);
+  update(@TenantId() tenantId: string, @Param('id') id: string, @Body() updateSectorDto: any) {
+    return this.sectorsService.update(tenantId, id, updateSectorDto);
   }
 
   @Roles(Role.ADMIN)
   @Delete(':id')
-  async remove(@Param('id') id: string) {
-    return await this.sectorsService.remove(id);
+  remove(@TenantId() tenantId: string, @Param('id') id: string) {
+    return this.sectorsService.remove(tenantId, id);
   }
 }

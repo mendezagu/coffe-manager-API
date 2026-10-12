@@ -1,159 +1,98 @@
 import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
-import { TablesService } from './tables.service';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
+import { TenantId } from '../auth/tenant.decorator';
+import { TablesService } from './tables.service';
 
 @Controller('api/tables')
 export class TablesController {
   constructor(private readonly tablesService: TablesService) {}
 
   @Get()
-  async findAll() {
-    try {
-      return await this.tablesService.findAll();
-    } catch (error) {
-      console.error(error);
-      throw error;
-    }
+  findAll(@TenantId() tenantId: string) {
+    return this.tablesService.findAll(tenantId);
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    try {
-      return await this.tablesService.findOne(id);
-    } catch (error) {
-      console.error(error);
-      throw error;
-    }
+  findOne(@TenantId() tenantId: string, @Param('id') id: string) {
+    return this.tablesService.findOne(tenantId, id);
   }
 
   @Roles(Role.ADMIN)
   @Post()
-  async create(@Body() createTableDto: any) {
-    try {
-      return await this.tablesService.create(createTableDto);
-    } catch (error) {
-      console.error(error);
-      throw error;
-    }
+  create(@TenantId() tenantId: string, @Body() createTableDto: any) {
+    return this.tablesService.create(tenantId, createTableDto);
   }
 
   @Roles(Role.ADMIN)
   @Put(':id')
-  async update(@Param('id') id: string, @Body() updateTableDto: any) {
-    try {
-      return await this.tablesService.update(id, updateTableDto);
-    } catch (error) {
-      console.error(error);
-      throw error;
-    }
+  update(@TenantId() tenantId: string, @Param('id') id: string, @Body() updateTableDto: any) {
+    return this.tablesService.update(tenantId, id, updateTableDto);
   }
 
   @Roles(Role.ADMIN)
   @Delete(':id')
-  async remove(@Param('id') id: string) {
-    try {
-      return await this.tablesService.remove(id);
-    } catch (error) {
-      console.error(error);
-      throw error;
-    }
+  remove(@TenantId() tenantId: string, @Param('id') id: string) {
+    return this.tablesService.remove(tenantId, id);
   }
 
   @Roles(Role.ADMIN, Role.CASHIER, Role.WAITER)
   @Put(':id/add-items')
-  async addItems(@Param('id') id: string, @Body() body: { items: any[] }) {
-    try {
-      return await this.tablesService.addItems(id, body.items);
-    } catch (error) {
-      console.error(error);
-      throw error;
-    }
+  addItems(@TenantId() tenantId: string, @Param('id') id: string, @Body() body: { items: any[] }) {
+    return this.tablesService.addItems(tenantId, id, body.items);
   }
 
   @Get('waiter-by-name/:name')
-  async getWaiterByName(@Param('name') name: string) {
-    try {
-      return await this.tablesService.getWaiterByName(name);
-    } catch (error) {
-      console.error(error);
-      throw error;
-    }
+  getWaiterByName(@TenantId() tenantId: string, @Param('name') name: string) {
+    return this.tablesService.getWaiterByName(tenantId, name);
   }
 
   @Get('waiter-by-id/:id')
-  async getWaiterById(@Param('id') id: string) {
-    try {
-      return await this.tablesService.getWaiterById(id);
-    } catch (error) {
-      console.error(error);
-      throw error;
-    }
+  getWaiterById(@TenantId() tenantId: string, @Param('id') id: string) {
+    return this.tablesService.getWaiterById(tenantId, id);
   }
 
   @Roles(Role.ADMIN, Role.CASHIER, Role.WAITER)
   @Put(':id/assign-waiter')
-  async assignWaiter(@Param('id') id: string, @Body() body: { waiterId: string; waiterName: string }) {
-    try {
-      return await this.tablesService.assignWaiter(id, body.waiterId, body.waiterName);
-    } catch (error) {
-      console.error(error);
-      throw error;
-    }
+  assignWaiter(
+    @TenantId() tenantId: string,
+    @Param('id') id: string,
+    @Body() body: { waiterId: string; waiterName: string },
+  ) {
+    return this.tablesService.assignWaiter(tenantId, id, body.waiterId, body.waiterName);
   }
 
   @Roles(Role.ADMIN, Role.CASHIER, Role.WAITER)
   @Put(':id/link-tables')
-  async linkTables(@Param('id') id: string, @Body() body: { linkedTableIds: string[] }) {
-    try {
-      return await this.tablesService.linkTables(id, body.linkedTableIds);
-    } catch (error) {
-      console.error(error);
-      throw error;
-    }
+  linkTables(@TenantId() tenantId: string, @Param('id') id: string, @Body() body: { linkedTableIds: string[] }) {
+    return this.tablesService.linkTables(tenantId, id, body.linkedTableIds);
   }
 
   @Roles(Role.ADMIN, Role.CASHIER, Role.WAITER)
   @Put(':id/unlink-tables')
-  async unlinkTables(@Param('id') id: string, @Body() body: { linkedTableIds: string[] }) {
-    try {
-      return await this.tablesService.unlinkTables(id, body.linkedTableIds);
-    } catch (error) {
-      console.error(error);
-      throw error;
-    }
+  unlinkTables(@TenantId() tenantId: string, @Param('id') id: string, @Body() body: { linkedTableIds: string[] }) {
+    return this.tablesService.unlinkTables(tenantId, id, body.linkedTableIds);
   }
 
   @Roles(Role.ADMIN, Role.CASHIER, Role.WAITER)
   @Put(':id/update-quantities')
-  async updateQuantities(@Param('id') id: string, @Body() body: { updates: { orderId: string; quantity: number }[] }) {
-    try {
-      return await this.tablesService.updateOrderQuantities(id, body.updates);
-    } catch (error) {
-      console.error(error);
-      throw error;
-    }
+  updateQuantities(
+    @TenantId() tenantId: string,
+    @Param('id') id: string,
+    @Body() body: { updates: { orderId: string; quantity: number }[] },
+  ) {
+    return this.tablesService.updateOrderQuantities(tenantId, id, body.updates);
   }
 
   @Roles(Role.ADMIN, Role.CASHIER, Role.WAITER)
   @Put(':id/remove-order')
-  async removeOrder(@Param('id') id: string, @Body() body: { orderIds: string[] }) {
-    try {
-      return await this.tablesService.removeOrder(id, body.orderIds);
-    } catch (error) {
-      console.error('Error:', error);
-      throw error;
-    }
+  removeOrder(@TenantId() tenantId: string, @Param('id') id: string, @Body() body: { orderIds: string[] }) {
+    return this.tablesService.removeOrder(tenantId, id, body.orderIds);
   }
 
   @Roles(Role.ADMIN, Role.CASHIER)
   @Put(':id/reset')
-  async resetTable(@Param('id') id: string) {
-    try {
-      return await this.tablesService.resetTable(id);
-    } catch (error) {
-      console.error('Error al resetear la mesa:', error);
-      throw error;
-    }
+  resetTable(@TenantId() tenantId: string, @Param('id') id: string) {
+    return this.tablesService.resetTable(tenantId, id);
   }
 }

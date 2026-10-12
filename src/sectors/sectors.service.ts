@@ -18,36 +18,36 @@ export function normalizeSectorName(name: string): string {
 export class SectorsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll() {
-    const sectors = await this.prisma.sector.findMany();
+  async findAll(tenantId: string) {
+    const sectors = await this.prisma.sector.findMany({ where: { tenantId } });
     return sectors
       .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name, 'es'))
       .map(mapSector);
   }
 
   // Recibe los ids de todos los sectores en el orden deseado y guarda su posición.
-  async reorder(ids: unknown) {
+  async reorder(tenantId: string, ids: unknown) {
     if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string')) {
       throw new BadRequestException('Se esperaba una lista de ids de sectores');
     }
 
     await this.prisma.$transaction(
       (ids as string[]).map((id, index) =>
-        this.prisma.sector.updateMany({ where: { id }, data: { position: index } }),
+        this.prisma.sector.updateMany({ where: { id, tenantId }, data: { position: index } }),
       ),
     );
-    return this.findAll();
+    return this.findAll(tenantId);
   }
 
-  async create(createSectorDto: any) {
+  async create(tenantId: string, createSectorDto: any) {
     const name = this.cleanName(createSectorDto?.name);
-    await this.assertNameAvailable(name);
+    await this.assertNameAvailable(tenantId, name);
 
     try {
       // el sector nuevo queda al final de la lista
-      const last = await this.prisma.sector.aggregate({ _max: { position: true } });
+      const last = await this.prisma.sector.aggregate({ where: { tenantId }, _max: { position: true } });
       const position = (last._max.position ?? -1) + 1;
-      const sector = await this.prisma.sector.create({ data: { name, position } });
+      const sector = await this.prisma.sector.create({ data: { tenantId, name, position } });
       return mapSector(sector);
     } catch (error) {
       this.rethrowIfDuplicate(error);
@@ -55,12 +55,12 @@ export class SectorsService {
     }
   }
 
-  async update(id: string, updateSectorDto: any) {
+  async update(tenantId: string, id: string, updateSectorDto: any) {
     const name = this.cleanName(updateSectorDto?.name);
-    await this.assertNameAvailable(name, id);
+    await this.assertNameAvailable(tenantId, name, id);
 
     try {
-      const sector = await this.prisma.sector.update({ where: { id }, data: { name } });
+      const sector = await this.prisma.sector.update({ where: { id, tenantId }, data: { name } });
       return mapSector(sector);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
@@ -72,14 +72,10 @@ export class SectorsService {
   }
 
   // Las mesas del sector no se borran: la FK es onDelete SetNull y quedan "sin sector".
-  async remove(id: string): Promise<{ message: string }> {
-    try {
-      await this.prisma.sector.delete({ where: { id } });
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
-        throw new NotFoundException('Sector no encontrado');
-      }
-      throw error;
+  async remove(tenantId: string, id: string): Promise<{ message: string }> {
+    const { count } = await this.prisma.sector.deleteMany({ where: { id, tenantId } });
+    if (count === 0) {
+      throw new NotFoundException('Sector no encontrado');
     }
     return { message: 'Sector eliminado' };
   }
@@ -94,9 +90,9 @@ export class SectorsService {
 
   // Compara en memoria (son pocos sectores) para ignorar tildes y mayúsculas, cosa que
   // el índice único de la base no hace.
-  private async assertNameAvailable(name: string, excludeId?: string) {
+  private async assertNameAvailable(tenantId: string, name: string, excludeId?: string) {
     const target = normalizeSectorName(name);
-    const sectors = await this.prisma.sector.findMany();
+    const sectors = await this.prisma.sector.findMany({ where: { tenantId } });
     const duplicated = sectors.some(s => s.id !== excludeId && normalizeSectorName(s.name) === target);
     if (duplicated) {
       throw new ConflictException('Ya existe un sector con ese nombre');

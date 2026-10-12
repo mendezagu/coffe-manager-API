@@ -9,10 +9,11 @@ const READY_VISIBLE_MS = 60 * 60 * 1000;
 export class KitchenService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list() {
+  async list(tenantId: string) {
     const since = new Date(Date.now() - READY_VISIBLE_MS);
     const orders = await this.prisma.order.findMany({
       where: {
+        table: { tenantId },
         OR: [{ status: { in: ['PENDING', 'PREPARING'] } }, { status: 'READY', updatedAt: { gte: since } }],
       },
       include: { menuItem: true, table: { include: { waiter: true } } },
@@ -33,15 +34,18 @@ export class KitchenService {
     }));
   }
 
-  async setStatus(id: string, status: OrderStatus) {
-    const order = await this.prisma.order.findUnique({ where: { id } });
+  async setStatus(tenantId: string, id: string, status: OrderStatus) {
+    const order = await this.prisma.order.findFirst({ where: { id, table: { tenantId } } });
     if (!order) throw new NotFoundException('Orden no encontrada');
     await this.prisma.order.update({ where: { id }, data: { status } });
     return { id, status };
   }
 
-  async setManyStatus(ids: string[], status: OrderStatus) {
-    const { count } = await this.prisma.order.updateMany({ where: { id: { in: ids } }, data: { status } });
+  async setManyStatus(tenantId: string, ids: string[], status: OrderStatus) {
+    const { count } = await this.prisma.order.updateMany({
+      where: { id: { in: ids }, table: { tenantId } },
+      data: { status },
+    });
     return { updated: count, status };
   }
 }

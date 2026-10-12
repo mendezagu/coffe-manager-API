@@ -7,12 +7,12 @@ import { mapBalance } from '../common/mappers';
 export class BalanceService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll() {
-    const balances = await this.prisma.balance.findMany();
+  async findAll(tenantId: string) {
+    const balances = await this.prisma.balance.findMany({ where: { tenantId } });
     return balances.map(mapBalance);
   }
 
-  async create(createBalanceDto: any) {
+  async create(tenantId: string, createBalanceDto: any) {
     if (!createBalanceDto.paymentMethod) {
       throw new Error('El método de pago es obligatorio');
     }
@@ -20,6 +20,7 @@ export class BalanceService {
     try {
       const balance = await this.prisma.balance.create({
         data: {
+          tenantId,
           orderId: createBalanceDto.orderId,
           tableName: createBalanceDto.tableName,
           waiterName: createBalanceDto.waiterName,
@@ -36,8 +37,9 @@ export class BalanceService {
     }
   }
 
-  async removeAll(): Promise<{ message: string }> {
-    await this.prisma.balance.deleteMany({});
+  // Solo borra los balances del negocio del usuario, nunca los de otros.
+  async removeAll(tenantId: string): Promise<{ message: string }> {
+    await this.prisma.balance.deleteMany({ where: { tenantId } });
     return { message: 'Todos los balances han sido eliminados' };
   }
 }

@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Req } from '@nestjs/co
 import { Role } from '@prisma/client';
 import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
 import { Roles } from '../auth/roles.decorator';
+import { TenantId } from '../auth/tenant.decorator';
 import { UsersService } from './users.service';
 
 class CreateUserDto {
@@ -33,22 +34,22 @@ export class UsersController {
   constructor(private readonly users: UsersService) {}
 
   @Get()
-  findAll() {
-    return this.users.findAll();
+  findAll(@TenantId() tenantId: string) {
+    return this.users.findAll(tenantId);
   }
 
   @Post()
-  create(@Body() dto: CreateUserDto) {
-    return this.users.create(dto);
+  create(@TenantId() tenantId: string, @Body() dto: CreateUserDto) {
+    return this.users.create(tenantId, dto);
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Req() req: any) {
-    return this.users.update(id, dto, req.user.id);
+  update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateUserDto, @Req() req: any) {
+    return this.users.update(tenantId, id, dto, req.user.id);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string, @Req() req: any) {
-    return this.users.remove(id, req.user.id);
+  remove(@TenantId() tenantId: string, @Param('id') id: string, @Req() req: any) {
+    return this.users.remove(tenantId, id, req.user.id);
   }
 }
