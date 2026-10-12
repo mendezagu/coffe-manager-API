@@ -5,9 +5,12 @@ import { TablesService } from './tables.service';
 
 // Corre contra una base Postgres real y separada (coffee_manager_test), no
 // contra la base de desarrollo (que tiene los datos migrados de producción).
-const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ??
-  'postgresql://postgres:Agus230324@localhost:5432/coffee_manager_test?schema=public';
+const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL as string;
+if (!TEST_DATABASE_URL) {
+  throw new Error(
+    'Definí TEST_DATABASE_URL (ej: postgresql://user:password@localhost:5432/coffee_manager_test?schema=public)',
+  );
+}
 
 describe('TablesService', () => {
   let prisma: PrismaService;
