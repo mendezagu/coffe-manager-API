@@ -97,22 +97,6 @@ model Order {
   @@map("orders")
 }
 
-model Balance {
-  id            String   @id @default(uuid())
-  orderId       String
-  tableName     String
-  waiterName    String
-  totalAmount   Float
-  paymentMethod String
-  date          DateTime @default(now())
-
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, orderId])
-  @@map("balances")
-}
-
 enum Role {
   ADMIN
   CASHIER
@@ -173,8 +157,57 @@ model Tenant {
   sectors   Sector[]
   menuItems MenuItem[]
   tables    Table[]
-  balances  Balance[]
+  sales     Sale[]
   users     User[]
 
   @@map("tenants")
+}
+
+// Una venta = el cobro de una mesa. Es inmutable: guarda el detalle de lo vendido con los
+// precios de ese momento, así los reportes no cambian si después se edita el menú.
+model Sale {
+  id String @id @default(uuid())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Lo genera el navegador al abrir el cobro: si el mismo cobro llega dos veces
+  // (doble toque, reintento tras un corte) se devuelve la misma venta en vez de duplicarla.
+  checkoutId String
+
+  tableName     String
+  waiterName    String
+  // quién cobró; vacío en las ventas migradas del sistema anterior
+  cashierName   String @default("")
+  paymentMethod String
+
+  grossTotal        Float // suma de precio x cantidad, sin descuentos
+  discountTotal     Float @default(0) // todo lo descontado (por ítem + general)
+  globalDiscountPct Float @default(0)
+  totalAmount       Float // lo que se cobró
+
+  date  DateTime   @default(now())
+  items SaleItem[]
+
+  @@unique([tenantId, checkoutId])
+  @@index([tenantId, date])
+  @@map("sales")
+}
+
+model SaleItem {
+  id     String @id @default(uuid())
+  saleId String
+  sale   Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  name        String
+  unitPrice   Float
+  quantity    Int
+  note        String  @default("")
+  isPromo     Boolean @default(false)
+  discountPct Float   @default(0)
+  // precio x cantidad con el descuento del ítem (todavía sin el descuento general)
+  lineTotal   Float
+
+  @@index([saleId])
+  @@map("sale_items")
 }

@@ -6,7 +6,8 @@ import { PrismaModule } from './prisma/prisma.module';
 import { TablesModule } from './tables/tables.module';
 import { MenuModule } from './menu/menu.module';
 import { WaitersModule } from './waiters/waiters.module';
-import { BalanceModule } from './balance/balance.module';
+import { SalesModule } from './sales/sales.module';
+import { ReportsModule } from './reports/reports.module';
 import { SectorsModule } from './sectors/sectors.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -22,7 +23,8 @@ import { SettingsModule } from './settings/settings.module';
     TablesModule,
     MenuModule,
     WaitersModule,
-    BalanceModule,
+    SalesModule,
+    ReportsModule,
     SectorsModule,
     AuthModule,
     UsersModule,

@@ -15,7 +15,7 @@
     "run": "npm start",
     "tenant:create": "ts-node scripts/create-tenant.ts",
     "migrate:data": "ts-node scripts/migrate-mongo-to-postgres.ts",
-    "test": "jest"
+    "test": "jest --runInBand"
   },
   "jest": {
     "rootDir": "src",

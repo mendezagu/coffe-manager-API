@@ -1,4 +1,4 @@
-import { Balance, MenuItem, Order, Sector, Table, Waiter } from '@prisma/client';
+import { MenuItem, Order, Sector, Table, Waiter } from '@prisma/client';
 
 type OrderWithMenuItem = Order & { menuItem?: MenuItem | null };
 type TableWithRelations = Table & {
@@ -58,17 +58,5 @@ export function mapTable(table: TableWithRelations, opts: { populateOrders: bool
     sectorId: table.sectorId ?? null,
     sectorName: table.sector ? table.sector.name : null,
     sectorPosition: table.sector ? table.sector.position : null,
-  };
-}
-
-export function mapBalance(balance: Balance) {
-  return {
-    _id: balance.id,
-    orderId: balance.orderId,
-    tableName: balance.tableName,
-    waiterName: balance.waiterName,
-    totalAmount: balance.totalAmount,
-    paymentMethod: balance.paymentMethod,
-    date: balance.date,
   };
 }
