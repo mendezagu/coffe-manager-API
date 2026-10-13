@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Payment, Prisma, Role, Sale, SaleItem } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { newTablePin } from '../qr/qr.tokens';
 import { modifiersTotal, readSnapshot } from '../modifiers/modifiers.logic';
 import { StockRequest, consumption, deductForSale, hasRecipe, loadContext, optionIdsOf, unitCost } from '../inventory/inventory.logic';
 
@@ -240,7 +241,7 @@ export class SalesService {
             where: { controlledById: tableId, tenantId },
             data: { controlledById: null, available: true },
           });
-          await tx.table.update({ where: { id: tableId }, data: { available: true, waiterId: null } });
+          await tx.table.update({ where: { id: tableId }, data: { available: true, waiterId: null, qrPin: newTablePin() } });
         } else {
           // Cobro parcial: se descuentan los platos cobrados y la mesa sigue ocupada con el resto
           for (const order of table.orders) {

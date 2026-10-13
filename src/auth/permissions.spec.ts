@@ -4,6 +4,8 @@ import { CashController } from '../cash/cash.controller';
 import { CategoriesController } from '../categories/categories.controller';
 import { InventoryController } from '../inventory/inventory.controller';
 import { KitchenController } from '../kitchen/kitchen.controller';
+import { QrController, QrPublicController } from '../qr/qr.controller';
+import { IS_PUBLIC_KEY } from './public.decorator';
 import { MenuController } from '../menu/menu.controller';
 import { ModifiersController } from '../modifiers/modifiers.controller';
 import { ReportsController } from '../reports/reports.controller';
@@ -92,6 +94,21 @@ describe('Permisos por rol en las rutas', () => {
   it('cocina y barra ven y mueven sus pedidos (y el administrador)', () => {
     for (const m of ['list', 'setManyStatus', 'setStatus']) {
       expect(rolesOf(KitchenController, m)).toEqual(only(ADMIN, KITCHEN, BAR));
+    }
+  });
+
+  it('pedido por QR: el personal atiende pedidos y avisos; solo el administrador maneja los códigos', () => {
+    for (const m of ['inbox', 'confirm', 'reject', 'callDone', 'tables']) {
+      expect(rolesOf(QrController, m)).toEqual(only(ADMIN, CASHIER, WAITER));
+    }
+    for (const m of ['generate', 'regenerate']) expect(rolesOf(QrController, m)).toEqual(only(ADMIN));
+  });
+
+  it('pedido por QR: solo la pantalla del cliente es pública; la bandeja del personal exige sesión', () => {
+    expect(Reflect.getMetadata(IS_PUBLIC_KEY, QrPublicController)).toBe(true);
+    expect(Reflect.getMetadata(IS_PUBLIC_KEY, QrController)).toBeUndefined();
+    for (const m of ['inbox', 'confirm', 'reject', 'callDone', 'tables', 'generate', 'regenerate']) {
+      expect(Reflect.getMetadata(IS_PUBLIC_KEY, QrController.prototype[m as keyof QrController])).toBeUndefined();
     }
   });
 });

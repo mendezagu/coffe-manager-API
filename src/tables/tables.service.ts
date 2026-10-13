@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { newQrToken, newTablePin } from '../qr/qr.tokens';
 import { mapTable, mapWaiter } from '../common/mappers';
 import { ModifierSnapshot, modifiersKey, resolveModifiers } from '../modifiers/modifiers.logic';
 import {
@@ -56,6 +57,8 @@ export class TablesService {
         tenantId,
         name: createTableDto.name,
         available: createTableDto.available ?? true,
+        qrToken: newQrToken(),
+        qrPin: newTablePin(),
         sectorId: sectorId ?? null,
       },
       include: { sector: true },
@@ -107,7 +110,7 @@ export class TablesService {
 
   // Con inventario y "bloquear pedidos sin stock", comprueba que lo pedido alcance. Se hace dentro de la
   // misma transacción y bloqueando el stock del negocio: dos mozos no pueden llevarse la última unidad a la vez.
-  private async assertStock(tx: Prisma.TransactionClient, tenantId: string, requests: StockRequest[]) {
+  async assertStock(tx: Prisma.TransactionClient, tenantId: string, requests: StockRequest[]) {
     if (requests.length === 0) return;
     const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: tenantId } });
     if (!tenant.inventoryEnabled || !tenant.blockOutOfStock) return;
@@ -130,7 +133,17 @@ export class TablesService {
   async addItems(tenantId: string, id: string, items: any[]) {
     await this.requireTable(tenantId, id);
 
-    await this.prisma.$transaction(async tx => {
+    await this.prisma.$transaction(tx => this.addItemsTx(tx, tenantId, id, items));
+
+    const updatedTable = await this.prisma.table.findUnique({ where: { id }, include: POPULATED_INCLUDE });
+    return mapTable(updatedTable, { populateOrders: true });
+  }
+
+  // Carga platos en una mesa dentro de una transacción ya abierta (la usan el mozo y la confirmación de
+  // pedidos por QR). Valida opciones y stock, y devuelve los ids de las líneas creadas o ampliadas.
+  async addItemsTx(tx: Prisma.TransactionClient, tenantId: string, id: string, items: any[]): Promise<string[]> {
+    const touched: string[] = [];
+    {
       // 1) Se valida todo lo pedido: que el plato exista y que las opciones elegidas sean válidas.
       const prepared: { item: any; menuItem: { id: string; name: string }; modifiers: ModifierSnapshot[] }[] = [];
       for (const item of items) {
@@ -169,8 +182,9 @@ export class TablesService {
             where: { id: existingOrder.id },
             data: { quantity: existingOrder.quantity + (item.quantity || 1) },
           });
+          touched.push(existingOrder.id);
         } else {
-          await tx.order.create({
+          const created = await tx.order.create({
             data: {
               tableId: id,
               menuItemId: item.id,
@@ -179,12 +193,11 @@ export class TablesService {
               modifiers: modifiers as unknown as Prisma.InputJsonValue,
             },
           });
+          touched.push(created.id);
         }
       }
-    });
-
-    const updatedTable = await this.prisma.table.findUnique({ where: { id }, include: POPULATED_INCLUDE });
-    return mapTable(updatedTable, { populateOrders: true });
+    }
+    return touched;
   }
 
   async getWaiterByName(tenantId: string, name: string) {
@@ -300,7 +313,7 @@ export class TablesService {
       }),
       this.prisma.table.update({
         where: { id },
-        data: { available: true, waiterId: null },
+        data: { available: true, waiterId: null, qrPin: newTablePin() },
       }),
     ]);
 

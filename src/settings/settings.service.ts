@@ -25,6 +25,9 @@ export interface UpdateSettingsInput {
   requireOpenRegister?: boolean;
   inventoryEnabled?: boolean;
   blockOutOfStock?: boolean;
+  qrEnabled?: boolean;
+  qrAutoConfirm?: boolean;
+  qrRequirePin?: boolean;
 }
 
 // Logo: una imagen chica embebida (data URL) o un archivo propio de la app (assets/...).
@@ -64,6 +67,11 @@ export function mapSettings(t: Tenant) {
     inventoryEnabled: t.inventoryEnabled,
     inventoryActive: t.inventoryEnabled && hasFeature(t.plan, 'inventory'),
     blockOutOfStock: t.blockOutOfStock,
+    // Pedido por QR: lo que eligió el negocio y lo que realmente rige (elegido Y permitido por el plan)
+    qrEnabled: t.qrEnabled,
+    qrActive: t.qrEnabled && hasFeature(t.plan, 'qr_ordering'),
+    qrAutoConfirm: t.qrAutoConfirm,
+    qrRequirePin: t.qrRequirePin,
   };
 }
 
@@ -100,6 +108,10 @@ export class SettingsService {
       throw new ForbiddenException(`Tu plan no incluye "${FEATURE_LABELS.inventory}"`);
     }
 
+    if (input.qrEnabled === true && !hasFeature(current.plan, 'qr_ordering')) {
+      throw new ForbiddenException(`Tu plan no incluye "${FEATURE_LABELS.qr_ordering}"`);
+    }
+
     const morning = input.shiftMorningStart ?? current.shiftMorningStart;
     const afternoon = input.shiftAfternoonStart ?? current.shiftAfternoonStart;
     const night = input.shiftNightStart ?? current.shiftNightStart;
@@ -134,6 +146,9 @@ export class SettingsService {
         requireOpenRegister: input.requireOpenRegister ?? undefined,
         inventoryEnabled: input.inventoryEnabled ?? undefined,
         blockOutOfStock: input.blockOutOfStock ?? undefined,
+        qrEnabled: input.qrEnabled ?? undefined,
+        qrAutoConfirm: input.qrAutoConfirm ?? undefined,
+        qrRequirePin: input.qrRequirePin ?? undefined,
       },
     });
     return mapSettings(tenant);

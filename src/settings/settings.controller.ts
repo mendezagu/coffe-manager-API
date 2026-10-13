@@ -28,6 +28,9 @@ class UpdateSettingsDto {
   @IsOptional() @IsBoolean() requireOpenRegister?: boolean;
   @IsOptional() @IsBoolean() inventoryEnabled?: boolean;
   @IsOptional() @IsBoolean() blockOutOfStock?: boolean;
+  @IsOptional() @IsBoolean() qrEnabled?: boolean;
+  @IsOptional() @IsBoolean() qrAutoConfirm?: boolean;
+  @IsOptional() @IsBoolean() qrRequirePin?: boolean;
 }
 
 @Controller('api/settings')

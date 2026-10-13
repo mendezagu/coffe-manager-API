@@ -17,6 +17,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { KitchenModule } from './kitchen/kitchen.module';
 import { SettingsModule } from './settings/settings.module';
+import { QrModule } from './qr/qr.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { SettingsModule } from './settings/settings.module';
     UsersModule,
     KitchenModule,
     SettingsModule,
+    QrModule,
   ],
   controllers: [AppController],
   providers: [AppService],

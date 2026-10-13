@@ -79,6 +79,14 @@ model Table {
 
   orders Order[]
 
+  // Pedido por QR: el código secreto va dentro del QR de la mesa (se regenera si se filtra); el código
+  // de mesa de 4 dígitos es opcional y cambia cada vez que la mesa se libera.
+  qrToken String? @unique
+  qrPin   String  @default("")
+
+  qrRequests   QrOrderRequest[]
+  serviceCalls ServiceCall[]
+
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -183,8 +191,14 @@ model Tenant {
   // suficientes no se puede pedir; si no bloquea, solo se avisa.
   inventoryEnabled Boolean @default(false)
   blockOutOfStock  Boolean @default(true)
+
+  // Pedido por QR: el negocio decide si lo ofrece (y el plan debe incluirlo), si el pedido entra solo o
+  // lo confirma un mozo, y si hace falta el código de mesa.
+  qrEnabled      Boolean @default(false)
+  qrAutoConfirm  Boolean @default(false)
+  qrRequirePin   Boolean @default(false)
   // Caja abierta en este momento (una por negocio). Es única: así dos aperturas simultáneas no pueden coexistir.
-  openRegisterId   String? @unique
+  openRegisterId String? @unique
 
   waiters        Waiter[]
   sectors        Sector[]
@@ -196,6 +210,8 @@ model Tenant {
   cashRegisters  CashRegister[]
   stockItems     StockItem[]
   stockMovements StockMovement[]
+  qrRequests     QrOrderRequest[]
+  serviceCalls   ServiceCall[]
   users          User[]
 
   @@map("tenants")
@@ -509,4 +525,76 @@ model ModifierOptionIngredient {
   @@unique([optionId, stockItemId])
   @@index([stockItemId])
   @@map("modifier_option_ingredients")
+}
+
+enum QrRequestStatus {
+  PENDING // esperando que un mozo lo confirme
+  CONFIRMED // el mozo lo confirmó: ya es una orden de la mesa
+  REJECTED // el mozo lo rechazó (con motivo)
+  CANCELLED // el cliente lo canceló antes de que lo confirmaran
+}
+
+// Un pedido hecho por el cliente desde el QR de la mesa. No es una orden hasta que se confirma.
+model QrOrderRequest {
+  id String @id @default(uuid())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  tableId String
+  table   Table  @relation(fields: [tableId], references: [id], onDelete: Cascade)
+
+  // Lo genera cada celular: así cada cliente ve solo sus pedidos, sin tener que registrarse.
+  clientId     String
+  customerName String @default("")
+
+  // [{ menuItemId, name, quantity, note, optionIds, modifiers, unitPrice }]: copia de lo pedido y de los precios
+  items Json
+  // total estimado al momento del pedido
+  total Float
+
+  status       QrRequestStatus @default(PENDING)
+  rejectReason String          @default("")
+  // órdenes de la mesa que se crearon o ampliaron al confirmar (para mostrarle al cliente cómo avanza)
+  orderIds     Json            @default("[]")
+
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+  resolvedBy String?
+
+  @@index([tenantId, status])
+  @@index([tableId, createdAt])
+  @@map("qr_order_requests")
+}
+
+enum ServiceCallType {
+  WAITER // "llamar al mozo"
+  BILL // "pedir la cuenta"
+}
+
+enum ServiceCallStatus {
+  OPEN
+  DONE
+}
+
+// Aviso del cliente desde su celular: llamar al mozo o pedir la cuenta.
+model ServiceCall {
+  id String @id @default(uuid())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  tableId String
+  table   Table  @relation(fields: [tableId], references: [id], onDelete: Cascade)
+
+  type   ServiceCallType
+  status ServiceCallStatus @default(OPEN)
+
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+  resolvedBy String?
+
+  @@index([tenantId, status])
+  @@index([tableId, status])
+  @@map("service_calls")
 }
