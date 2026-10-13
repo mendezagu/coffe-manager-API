@@ -187,13 +187,14 @@ describe('CashService (caja)', () => {
       expect(register?.cash.expected).toBeNull();
       expect(register?.cash.sales).toBeNull(); // ni los cobros en efectivo
       expect(register?.byMethod).toEqual([]); // ni el desglose por método
-      // lo que sí sabe: su fondo, sus movimientos y cuánto se vendió en total
+      // lo que sí sabe: su fondo y sus movimientos
       expect(register?.cash).toMatchObject({ opening: 23500, in: 0, out: 1000 });
-      expect(register?.sales).toMatchObject({ count: 2, totalAmount: 80800 });
-      // y nada en el JSON entero que contenga el esperado (23500 + 54600 - 1000 = 77100) ni los cobros en efectivo
+      // y ni siquiera el total vendido (con el fondo delataría el efectivo si casi todo fue en efectivo): solo cuántos cobros
+      expect(register?.sales).toEqual({ count: 2, totalAmount: null, discountTotal: null, tipsTotal: null });
+      expect(register?.tipsByWaiter).toEqual([]);
+      // nada en el JSON entero que contenga el esperado (23500 + 54600 - 1000 = 77100), los cobros en efectivo ni el total vendido
       const raw = JSON.stringify(register);
-      expect(raw).not.toContain('77100');
-      expect(raw).not.toContain('54600');
+      for (const secret of ['77100', '54600', '80800', '26200']) expect(raw).not.toContain(secret);
     });
 
     it('lo mismo vale para las respuestas de abrir caja y de registrar movimientos', async () => {

@@ -114,16 +114,20 @@ export class CashService {
   // ---- cálculo del resumen ----
 
   /**
-   * Conteo a ciegas: mientras la caja está abierta, quien no es administrador NO recibe nada con lo que
-   * se pueda deducir el efectivo esperado (ni cobros en efectivo, ni el desglose por método, ni el
-   * esperado). Se censura acá, en el servidor: ocultarlo solo en la pantalla no alcanza, porque la
-   * respuesta de la API se puede leer. Al cerrar, el resumen completo es parte del resultado del arqueo.
+   * Conteo a ciegas: mientras la caja está abierta, quien no es administrador NO recibe ningún importe de
+   * lo vendido: ni el efectivo esperado, ni los cobros en efectivo, ni el desglose por método, ni el total
+   * de ventas, las propinas o los descuentos (con el fondo, el total de ventas ya delata el efectivo cuando
+   * se cobró casi todo en efectivo). Solo queda lo que la persona cargó ella misma: el fondo y sus
+   * movimientos, y cuántos cobros hubo. Se censura acá, en el servidor: ocultarlo solo en la pantalla no
+   * alcanza, porque la respuesta de la API se puede leer. Al cerrar, el resumen completo es el resultado del arqueo.
    */
   private viewFor(summary: Awaited<ReturnType<CashService['summarize']>>, role: Role) {
     if (role === Role.ADMIN || !summary.open) return summary;
     return {
       ...summary,
+      sales: { count: summary.sales.count, totalAmount: null as number | null, discountTotal: null as number | null, tipsTotal: null as number | null },
       byMethod: [] as typeof summary.byMethod,
+      tipsByWaiter: [] as typeof summary.tipsByWaiter,
       cash: { opening: summary.cash.opening, sales: null as number | null, in: summary.cash.in, out: summary.cash.out, expected: null as number | null },
     };
   }
