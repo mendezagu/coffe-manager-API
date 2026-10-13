@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { Role } from '@prisma/client';
 import { CashController } from '../cash/cash.controller';
 import { CategoriesController } from '../categories/categories.controller';
+import { InventoryController } from '../inventory/inventory.controller';
 import { KitchenController } from '../kitchen/kitchen.controller';
 import { MenuController } from '../menu/menu.controller';
 import { ModifiersController } from '../modifiers/modifiers.controller';
@@ -78,6 +79,14 @@ describe('Permisos por rol en las rutas', () => {
 
   it('crear, editar y borrar mesas es solo del administrador', () => {
     for (const m of ['create', 'update', 'remove']) expect(rolesOf(TablesController, m)).toEqual(only(ADMIN));
+  });
+
+  it('el inventario (stock, costos, recetas, conteos) es solo del administrador', () => {
+    const methods = [
+      'summary', 'listItems', 'createItem', 'updateItem', 'removeItem', 'purchase', 'waste', 'adjust',
+      'count', 'movements', 'recipes', 'setRecipe', 'options', 'setOptionIngredients',
+    ];
+    for (const m of methods) expect(rolesOf(InventoryController, m)).toEqual(only(ADMIN));
   });
 
   it('cocina y barra ven y mueven sus pedidos (y el administrador)', () => {

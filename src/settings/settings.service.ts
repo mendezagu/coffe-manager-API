@@ -23,6 +23,8 @@ export interface UpdateSettingsInput {
   tipEnabled?: boolean;
   tipSuggestedPct?: number;
   requireOpenRegister?: boolean;
+  inventoryEnabled?: boolean;
+  blockOutOfStock?: boolean;
 }
 
 // Logo: una imagen chica embebida (data URL) o un archivo propio de la app (assets/...).
@@ -58,6 +60,10 @@ export function mapSettings(t: Tenant) {
     tipEnabled: t.tipEnabled,
     tipSuggestedPct: t.tipSuggestedPct,
     requireOpenRegister: t.requireOpenRegister,
+    // Inventario: lo que el negocio eligió y lo que realmente rige (elegido Y permitido por el plan)
+    inventoryEnabled: t.inventoryEnabled,
+    inventoryActive: t.inventoryEnabled && hasFeature(t.plan, 'inventory'),
+    blockOutOfStock: t.blockOutOfStock,
   };
 }
 
@@ -88,6 +94,10 @@ export class SettingsService {
 
     if (input.splitKitchenBar === true && !hasFeature(current.plan, 'kitchen_bar_split')) {
       throw new ForbiddenException(`Tu plan no incluye "${FEATURE_LABELS.kitchen_bar_split}"`);
+    }
+
+    if (input.inventoryEnabled === true && !hasFeature(current.plan, 'inventory')) {
+      throw new ForbiddenException(`Tu plan no incluye "${FEATURE_LABELS.inventory}"`);
     }
 
     const morning = input.shiftMorningStart ?? current.shiftMorningStart;
@@ -122,6 +132,8 @@ export class SettingsService {
         tipEnabled: input.tipEnabled ?? undefined,
         tipSuggestedPct: input.tipSuggestedPct ?? undefined,
         requireOpenRegister: input.requireOpenRegister ?? undefined,
+        inventoryEnabled: input.inventoryEnabled ?? undefined,
+        blockOutOfStock: input.blockOutOfStock ?? undefined,
       },
     });
     return mapSettings(tenant);

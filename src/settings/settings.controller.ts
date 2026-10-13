@@ -26,6 +26,8 @@ class UpdateSettingsDto {
   @IsOptional() @IsBoolean() tipEnabled?: boolean;
   @IsOptional() @IsInt() @Min(0) @Max(100) tipSuggestedPct?: number;
   @IsOptional() @IsBoolean() requireOpenRegister?: boolean;
+  @IsOptional() @IsBoolean() inventoryEnabled?: boolean;
+  @IsOptional() @IsBoolean() blockOutOfStock?: boolean;
 }
 
 @Controller('api/settings')

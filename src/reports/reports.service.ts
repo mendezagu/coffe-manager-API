@@ -43,7 +43,7 @@ export class ReportsService {
 
     const byWaiter = new Map<string, { salesCount: number; totalAmount: number }>();
     const byPayment = new Map<string, { salesCount: number; totalAmount: number }>();
-    const items = new Map<string, { quantity: number; amount: number }>();
+    const items = new Map<string, { quantity: number; amount: number; costQty: number; costAmount: number; cost: number }>();
     const add = (m: Map<string, { salesCount: number; totalAmount: number }>, key: string, amount: number) => {
       const row = m.get(key) ?? { salesCount: 0, totalAmount: 0 };
       row.salesCount += 1;
@@ -55,6 +55,10 @@ export class ReportsService {
     let grossTotal = 0;
     let discountTotal = 0;
     let itemsSold = 0;
+    // Ganancia: solo se calcula sobre lo vendido con costo conocido (platos con receta)
+    let knownRevenue = 0;
+    let unknownRevenue = 0;
+    let costTotal = 0;
     let salesWithoutDetail = 0;
     let tipsTotal = 0;
     const waiterTips = new Map<string, number>();
@@ -81,9 +85,19 @@ export class ReportsService {
         // El descuento general se reparte entre los platos que no son promo, así los importes
         // por plato suman lo realmente cobrado.
         const amount = item.isPromo ? item.lineTotal : item.lineTotal * (1 - sale.globalDiscountPct / 100);
-        const row = items.get(item.name) ?? { quantity: 0, amount: 0 };
+        const row = items.get(item.name) ?? { quantity: 0, amount: 0, costQty: 0, costAmount: 0, cost: 0 };
         row.quantity += item.quantity;
         row.amount += amount;
+        if (item.unitCost !== null) {
+          const cost = item.unitCost * item.quantity;
+          row.costQty += item.quantity;
+          row.costAmount += amount;
+          row.cost += cost;
+          knownRevenue += amount;
+          costTotal += cost;
+        } else {
+          unknownRevenue += amount;
+        }
         items.set(item.name, row);
         itemsSold += item.quantity;
       }
@@ -105,10 +119,21 @@ export class ReportsService {
         itemsSold,
         salesWithoutDetail,
         tipsTotal: round2(tipsTotal),
+        // costo y ganancia de lo vendido con receta; revenueWithoutCost = lo vendido sin costo conocido
+        costTotal: round2(costTotal),
+        profit: round2(knownRevenue - costTotal),
+        profitMarginPct: knownRevenue > 0 ? round2(((knownRevenue - costTotal) / knownRevenue) * 100) : null,
+        revenueWithoutCost: round2(unknownRevenue),
       },
       byDay: [...byDay.entries()].map(([date, v]) => ({ date, ...v, totalAmount: round2(v.totalAmount) })),
       items: [...items.entries()]
-        .map(([name, v]) => ({ name, quantity: v.quantity, amount: round2(v.amount) }))
+        .map(([name, v]) => ({
+          name,
+          quantity: v.quantity,
+          amount: round2(v.amount),
+          cost: v.costQty ? round2(v.cost) : null,
+          profit: v.costQty ? round2(v.costAmount - v.cost) : null,
+        }))
         .sort((a, b) => b.amount - a.amount)
         .slice(0, MAX_ITEMS),
       byWaiter: rank(byWaiter, 'name').map((w: any) => ({ ...w, tips: round2(waiterTips.get(w.name) ?? 0) })),

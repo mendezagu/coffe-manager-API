@@ -47,6 +47,7 @@ model MenuItem {
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   modifierGroups MenuItemModifierGroup[]
+  ingredients    MenuItemIngredient[]
 
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -177,8 +178,13 @@ model Tenant {
 
   // Caja: si es true, no se puede cobrar sin una caja abierta
   requireOpenRegister Boolean @default(true)
+
+  // Inventario: el negocio decide si lo usa (y el plan debe incluirlo). Si bloquea, un plato sin insumos
+  // suficientes no se puede pedir; si no bloquea, solo se avisa.
+  inventoryEnabled Boolean @default(false)
+  blockOutOfStock  Boolean @default(true)
   // Caja abierta en este momento (una por negocio). Es única: así dos aperturas simultáneas no pueden coexistir.
-  openRegisterId      String? @unique
+  openRegisterId   String? @unique
 
   waiters        Waiter[]
   sectors        Sector[]
@@ -188,6 +194,8 @@ model Tenant {
   tables         Table[]
   sales          Sale[]
   cashRegisters  CashRegister[]
+  stockItems     StockItem[]
+  stockMovements StockMovement[]
   users          User[]
 
   @@map("tenants")
@@ -246,6 +254,10 @@ model SaleItem {
   discountPct Float   @default(0)
   // precio x cantidad con el descuento del ítem (todavía sin el descuento general)
   lineTotal   Float
+
+  // Costo de una unidad al momento de la venta (insumos de la receta x su costo). null = el plato no tenía
+  // receta, o el negocio no usaba inventario: no se puede calcular la ganancia.
+  unitCost Float?
 
   // Mismos modificadores que tenía la orden. unitPrice ya incluye sus precios.
   modifiers Json @default("[]")
@@ -315,6 +327,8 @@ model ModifierOption {
   position   Int     @default(0)
   // desactivar una opción la oculta del menú sin tocar lo ya pedido (ej: "se acabó la leche de almendras")
   active     Boolean @default(true)
+
+  ingredients ModifierOptionIngredient[]
 
   @@index([groupId])
   @@map("modifier_options")
@@ -399,4 +413,100 @@ model CashMovement {
 
   @@index([registerId])
   @@map("cash_movements")
+}
+
+enum StockMovementType {
+  PURCHASE // entrada de mercadería
+  SALE // consumo por una venta
+  WASTE // merma: rotura, vencimiento, error
+  ADJUSTMENT // ajuste o conteo físico
+}
+
+// Algo que se cuenta: un insumo (café, leche, vasos) o un producto que se vende tal cual (una gaseosa).
+model StockItem {
+  id String @id @default(uuid())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name        String
+  // unidad de medida: se carga y se descuenta siempre en esta unidad (unidad, g, kg, ml, l)
+  unit        String   @default("unidad")
+  // existencias actuales; puede quedar negativo si se vendió sin stock (hay un aviso)
+  onHand      Float    @default(0)
+  minStock    Float    @default(0)
+  // costo por unidad de medida (promedio ponderado de las compras)
+  costPerUnit Float    @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  movements         StockMovement[]
+  menuIngredients   MenuItemIngredient[]
+  optionIngredients ModifierOptionIngredient[]
+
+  @@unique([tenantId, name])
+  @@map("stock_items")
+}
+
+// Libro de movimientos: cada cambio de existencias queda registrado (qué, cuánto, quién, por qué).
+model StockMovement {
+  id String @id @default(uuid())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  stockItemId String
+  stockItem   StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+
+  type         StockMovementType
+  // variación: positiva si entra, negativa si sale
+  quantity     Float
+  balanceAfter Float
+  // solo compras: costo por unidad de esa compra
+  unitCost     Float?
+  supplier     String            @default("")
+  note         String            @default("")
+  // id de la venta que lo originó (type = SALE)
+  reference    String?
+  createdBy    String
+  createdAt    DateTime          @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([stockItemId, createdAt])
+  @@map("stock_movements")
+}
+
+// Receta: lo que consume UNA unidad de un plato.
+model MenuItemIngredient {
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  stockItemId String
+  stockItem   StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+
+  quantity Float
+
+  @@id([menuItemId, stockItemId])
+  @@index([stockItemId])
+  @@map("menu_item_ingredients")
+}
+
+// Lo que consume elegir una opción (ej: "Leche de almendras" consume leche de almendras
+// y reemplaza a la leche común de la receta).
+model ModifierOptionIngredient {
+  id String @id @default(uuid())
+
+  optionId String
+  option   ModifierOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  stockItemId String
+  stockItem   StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+
+  quantity            Float
+  // si viene, esa parte de la receta deja de consumirse (la opción la reemplaza)
+  replacesStockItemId String?
+
+  @@unique([optionId, stockItemId])
+  @@index([stockItemId])
+  @@map("modifier_option_ingredients")
 }

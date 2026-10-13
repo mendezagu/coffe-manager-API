@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { ModifierGroup, ModifierOption, ModifierSelection, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { availableStock, committedConsumption, loadContext, optionOutOfStock } from '../inventory/inventory.logic';
 
 export interface OptionInput {
   id?: string; // si viene, se edita esa opción; si no, se crea
@@ -51,7 +52,18 @@ export class ModifiersService {
       include: INCLUDE,
       orderBy: [{ position: 'asc' }, { name: 'asc' }],
     });
-    return groups.map(mapModifierGroup);
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    let outOfStock: (optionId: string) => boolean = () => false;
+    if (tenant?.inventoryEnabled) {
+      const ctx = await loadContext(this.prisma, tenantId);
+      const avail = availableStock(ctx, await committedConsumption(this.prisma, tenantId, ctx));
+      outOfStock = (optionId) => optionOutOfStock(ctx, avail, optionId);
+    }
+    // outOfStock: el mozo no puede elegir una opción cuyo insumo se agotó (ej: leche de almendras)
+    return groups.map((g) => {
+      const mapped = mapModifierGroup(g);
+      return { ...mapped, options: mapped.options.map((o) => ({ ...o, outOfStock: outOfStock(o._id) })) };
+    });
   }
 
   async create(tenantId: string, input: GroupInput) {

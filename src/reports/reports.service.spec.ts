@@ -138,8 +138,8 @@ describe('ReportsService', () => {
     const r = await service.sales(tenantId, { from: '2026-10-10', to: '2026-10-10', tz: BA });
 
     const byName = Object.fromEntries(r.items.map((i) => [i.name, i]));
-    expect(byName['Café']).toEqual({ name: 'Café', quantity: 5, amount: 2000 + 2700 }); // 2000 + 3000*0,9
-    expect(byName['Torta']).toEqual({ name: 'Torta', quantity: 1, amount: 2500 });
+    expect(byName['Café']).toEqual({ name: 'Café', quantity: 5, amount: 2000 + 2700, cost: null, profit: null }); // 2000 + 3000*0,9
+    expect(byName['Torta']).toEqual({ name: 'Torta', quantity: 1, amount: 2500, cost: null, profit: null });
     expect(r.items[0].name).toBe('Café'); // ordenado por importe
   });
 

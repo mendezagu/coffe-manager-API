@@ -8,6 +8,7 @@ import {
 import { Payment, Prisma, Role, Sale, SaleItem } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { modifiersTotal, readSnapshot } from '../modifiers/modifiers.logic';
+import { StockRequest, consumption, deductForSale, hasRecipe, loadContext, optionIdsOf, unitCost } from '../inventory/inventory.logic';
 
 export const PAYMENT_METHODS = ['efectivo', 'transferencia', 'qr', 'tarjeta'] as const;
 export const MIXED_PAYMENT = 'mixto';
@@ -146,6 +147,10 @@ export class SalesService {
       throw new BadRequestException('Hay descuentos para órdenes que no se están cobrando. Reabrí el cobro.');
     }
 
+    // Con inventario: lo que consume cada plato (para descontar el stock y calcular el costo de la venta)
+    const inventory = tenant.inventoryEnabled ? await loadContext(this.prisma, tenantId) : null;
+    const charged: StockRequest[] = [];
+
     // ---- Cálculo (la fuente de verdad del importe) ----
     let gross = 0;
     let lineSum = 0;
@@ -166,6 +171,13 @@ export class SalesService {
         const discountPct = isPromo ? 0 : itemDiscounts.get(order.id) ?? 0;
         const lineGross = round2(price * quantity);
         const lineTotal = round2(lineGross * (1 - discountPct / 100));
+        // Costo de una unidad con los costos de hoy (null si el plato no tiene receta: no se puede calcular)
+        const optionIds = optionIdsOf(order.modifiers);
+        let cost: number | null = null;
+        if (inventory) {
+          if (hasRecipe(inventory, order.menuItemId)) cost = unitCost(inventory, consumption(inventory, order.menuItemId, optionIds));
+          if (order.menuItemId) charged.push({ menuItemId: order.menuItemId, quantity, optionIds });
+        }
         gross += lineGross;
         lineSum += lineTotal;
         if (!isPromo) discountable += lineTotal;
@@ -177,6 +189,7 @@ export class SalesService {
           isPromo,
           discountPct,
           lineTotal,
+          unitCost: cost,
           modifiers: readSnapshot(order.modifiers) as unknown as Prisma.InputJsonValue,
         };
       });
@@ -216,6 +229,9 @@ export class SalesService {
           },
           include: SALE_INCLUDE,
         });
+
+        // Con inventario, la venta descuenta los insumos consumidos (y deja el movimiento en el libro de stock)
+        if (inventory) await deductForSale(tx, tenantId, inventory, charged, created.id, actor.name);
 
         if (isFull) {
           // Se cobró todo: liberar la mesa (igual que resetTable) dentro de la misma transacción

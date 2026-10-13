@@ -1,8 +1,18 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { mapTable, mapWaiter } from '../common/mappers';
-import { modifiersKey, resolveModifiers } from '../modifiers/modifiers.logic';
+import { ModifierSnapshot, modifiersKey, resolveModifiers } from '../modifiers/modifiers.logic';
+import {
+  StockRequest,
+  availableStock,
+  committedConsumption,
+  findShortages,
+  loadContext,
+  lockStock,
+  optionIdsOf,
+  shortageMessage,
+} from '../inventory/inventory.logic';
 
 const ORDERS_IN_ORDER = { orderBy: [{ createdAt: 'asc' as const }, { id: 'asc' as const }] };
 const FULL_INCLUDE = { orders: ORDERS_IN_ORDER, waiter: true, linkedTables: true, sector: true } as const;
@@ -95,6 +105,20 @@ export class TablesService {
     return table;
   }
 
+  // Con inventario y "bloquear pedidos sin stock", comprueba que lo pedido alcance. Se hace dentro de la
+  // misma transacción y bloqueando el stock del negocio: dos mozos no pueden llevarse la última unidad a la vez.
+  private async assertStock(tx: Prisma.TransactionClient, tenantId: string, requests: StockRequest[]) {
+    if (requests.length === 0) return;
+    const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: tenantId } });
+    if (!tenant.inventoryEnabled || !tenant.blockOutOfStock) return;
+
+    await lockStock(tx, tenantId);
+    const ctx = await loadContext(tx, tenantId);
+    const avail = availableStock(ctx, await committedConsumption(tx, tenantId, ctx));
+    const shortages = findShortages(ctx, avail, requests);
+    if (shortages.length) throw new ConflictException(shortageMessage(shortages));
+  }
+
   async remove(tenantId: string, id: string): Promise<{ message: string }> {
     const { count } = await this.prisma.table.deleteMany({ where: { id, tenantId } });
     if (count === 0) {
@@ -107,16 +131,29 @@ export class TablesService {
     await this.requireTable(tenantId, id);
 
     await this.prisma.$transaction(async tx => {
+      // 1) Se valida todo lo pedido: que el plato exista y que las opciones elegidas sean válidas.
+      const prepared: { item: any; menuItem: { id: string; name: string }; modifiers: ModifierSnapshot[] }[] = [];
       for (const item of items) {
         const menuItem = await tx.menuItem.findFirst({ where: { id: item.id, tenantId } });
         if (!menuItem) {
           throw new NotFoundException(`Ítem con ID ${item.id} no encontrado`);
         }
-
-        const note = (item.note || '').trim();
         // Opciones elegidas (ids): se validan contra lo que el plato ofrece y se guarda una copia
         // con el nombre y el precio de este momento.
         const modifiers = await resolveModifiers(tx, tenantId, menuItem.id, menuItem.name, item.modifiers);
+        prepared.push({ item, menuItem, modifiers });
+      }
+
+      // 2) Con inventario, que lo pedido alcance (existencias menos lo ya pedido en otras mesas).
+      await this.assertStock(
+        tx,
+        tenantId,
+        prepared.map((p) => ({ menuItemId: p.menuItem.id, quantity: p.item.quantity || 1, optionIds: p.modifiers.map((m) => m.optionId) })),
+      );
+
+      // 3) Recién ahí se cargan las órdenes.
+      for (const { item, menuItem, modifiers } of prepared) {
+        const note = (item.note || '').trim();
 
         // Los ítems con nota nunca se fusionan con una línea existente: cada
         // aclaración (ej. "sin verduras") debe quedar en su propia línea. Tampoco se suma a
@@ -217,13 +254,25 @@ export class TablesService {
   async updateOrderQuantities(tenantId: string, id: string, updates: { orderId: string; quantity: number }[]) {
     await this.requireTable(tenantId, id);
 
-    for (const { orderId, quantity } of updates) {
-      // updateMany + tableId en el where: ids que no matchean (o pertenecen a otra mesa) se ignoran en silencio
-      await this.prisma.order.updateMany({
-        where: { id: orderId, tableId: id },
-        data: { quantity },
-      });
-    }
+    await this.prisma.$transaction(async tx => {
+      // Subir una cantidad consume más: se comprueba el stock de la diferencia (bajarla no necesita comprobar nada)
+      const increases: StockRequest[] = [];
+      for (const { orderId, quantity } of updates) {
+        const order = await tx.order.findFirst({ where: { id: orderId, tableId: id } });
+        if (order?.menuItemId && quantity > order.quantity) {
+          increases.push({ menuItemId: order.menuItemId, quantity: quantity - order.quantity, optionIds: optionIdsOf(order.modifiers) });
+        }
+      }
+      await this.assertStock(tx, tenantId, increases);
+
+      for (const { orderId, quantity } of updates) {
+        // updateMany + tableId en el where: ids que no matchean (o pertenecen a otra mesa) se ignoran en silencio
+        await tx.order.updateMany({
+          where: { id: orderId, tableId: id },
+          data: { quantity },
+        });
+      }
+    });
 
     const updatedTable = await this.prisma.table.findUnique({ where: { id }, include: POPULATED_INCLUDE });
     return mapTable(updatedTable, { populateOrders: true });

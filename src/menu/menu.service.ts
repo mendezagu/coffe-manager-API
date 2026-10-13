@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { mapMenuItem } from '../common/mappers';
+import { availableStock, committedConsumption, loadContext, maxUnits } from '../inventory/inventory.logic';
 
 const WITH_GROUPS = { modifierGroups: { select: { groupId: true }, orderBy: { position: 'asc' as const } } };
 
@@ -10,8 +11,20 @@ export class MenuService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(tenantId: string) {
-    const items = await this.prisma.menuItem.findMany({ where: { tenantId }, include: WITH_GROUPS });
-    return items.map((item) => mapMenuItem(item));
+    const [items, tenant] = await Promise.all([
+      this.prisma.menuItem.findMany({ where: { tenantId }, include: WITH_GROUPS }),
+      this.prisma.tenant.findUnique({ where: { id: tenantId } }),
+    ]);
+
+    // Con inventario activo, cada plato con receta informa cuántas unidades se pueden preparar
+    // (null = sin receta: no se controla). El mozo lo usa para marcar "Agotado".
+    let availableUnits: (id: string) => number | null = () => null;
+    if (tenant?.inventoryEnabled) {
+      const ctx = await loadContext(this.prisma, tenantId);
+      const avail = availableStock(ctx, await committedConsumption(this.prisma, tenantId, ctx));
+      availableUnits = (id) => maxUnits(ctx, avail, id);
+    }
+    return items.map((item) => ({ ...mapMenuItem(item), availableUnits: availableUnits(item.id) }));
   }
 
   async create(tenantId: string, createMenuItemDto: any) {
