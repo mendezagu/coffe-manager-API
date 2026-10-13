@@ -32,8 +32,8 @@ describe('SalesService', () => {
 
   beforeEach(async () => {
     await prisma.tenant.deleteMany({}); // arrastra todo lo del negocio (onDelete: Cascade)
-    tenantId = (await prisma.tenant.create({ data: { name: 'Negocio A' } })).id;
-    otherTenantId = (await prisma.tenant.create({ data: { name: 'Negocio B' } })).id;
+    tenantId = (await prisma.tenant.create({ data: { name: 'Negocio A', requireOpenRegister: false } })).id;
+    otherTenantId = (await prisma.tenant.create({ data: { name: 'Negocio B', requireOpenRegister: false } })).id;
   });
 
   const item = (name: string, price: number, extra: object = {}, tid = tenantId) =>

@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -23,9 +24,26 @@ class ItemDiscountDto {
   @IsNumber() @Min(0) @Max(100) discount: number;
 }
 
+class PaymentDto {
+  @IsIn(PAYMENT_METHODS as unknown as string[]) method: string;
+  @IsNumber() @Min(0.01) amount: number;
+  // solo efectivo: lo que entregó el cliente
+  @IsOptional() @IsNumber() @Min(0) tendered?: number;
+}
+
+class LineDto {
+  @IsString() orderId: string;
+  @IsInt() @Min(1) quantity: number;
+}
+
 class CheckoutDto {
   @IsString() @MinLength(8) @MaxLength(100) checkoutId: string;
-  @IsIn(PAYMENT_METHODS as unknown as string[]) paymentMethod: string;
+  // un solo método por el total (atajo); para varios métodos usar `payments`
+  @IsOptional() @IsIn(PAYMENT_METHODS as unknown as string[]) paymentMethod?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(4) @ValidateNested({ each: true }) @Type(() => PaymentDto) payments?: PaymentDto[];
+  @IsOptional() @IsNumber() @Min(0) tip?: number;
+  // cobrar solo una parte de la mesa (división de cuenta por platos)
+  @IsOptional() @IsArray() @ArrayMaxSize(200) @ValidateNested({ each: true }) @Type(() => LineDto) lines?: LineDto[];
   @IsOptional() @IsNumber() @Min(0) @Max(100) globalDiscount?: number;
   @IsOptional()
   @IsArray()
@@ -40,13 +58,15 @@ class CheckoutDto {
 export class SalesController {
   constructor(private readonly sales: SalesService) {}
 
-  @Roles(Role.ADMIN, Role.CASHIER)
+  // Solo el administrador: el historial muestra cómo se pagó cada venta y, sumando los cobros en efectivo,
+  // permitiría reconstruir el efectivo esperado de una caja abierta (conteo a ciegas).
+  @Roles(Role.ADMIN)
   @Get()
   findAll(@TenantId() tenantId: string) {
     return this.sales.findAll(tenantId);
   }
 
-  @Roles(Role.ADMIN, Role.CASHIER)
+  @Roles(Role.ADMIN)
   @Get(':id')
   findOne(@TenantId() tenantId: string, @Param('id') id: string) {
     return this.sales.findOne(tenantId, id);

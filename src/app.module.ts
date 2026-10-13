@@ -10,6 +10,7 @@ import { SalesModule } from './sales/sales.module';
 import { ReportsModule } from './reports/reports.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ModifiersModule } from './modifiers/modifiers.module';
+import { CashModule } from './cash/cash.module';
 import { SectorsModule } from './sectors/sectors.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -29,6 +30,7 @@ import { SettingsModule } from './settings/settings.module';
     ReportsModule,
     CategoriesModule,
     ModifiersModule,
+    CashModule,
     SectorsModule,
     AuthModule,
     UsersModule,

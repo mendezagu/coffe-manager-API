@@ -20,6 +20,9 @@ export interface UpdateSettingsInput {
   shiftAfternoonStart?: number;
   shiftNightStart?: number;
   splitKitchenBar?: boolean;
+  tipEnabled?: boolean;
+  tipSuggestedPct?: number;
+  requireOpenRegister?: boolean;
 }
 
 // Logo: una imagen chica embebida (data URL) o un archivo propio de la app (assets/...).
@@ -51,6 +54,10 @@ export function mapSettings(t: Tenant) {
     features: featuresOf(t.plan),
     splitKitchenBar: t.splitKitchenBar,
     splitActive: t.splitKitchenBar && hasFeature(t.plan, 'kitchen_bar_split'),
+    // Propinas y caja
+    tipEnabled: t.tipEnabled,
+    tipSuggestedPct: t.tipSuggestedPct,
+    requireOpenRegister: t.requireOpenRegister,
   };
 }
 
@@ -112,6 +119,9 @@ export class SettingsService {
         shiftAfternoonStart: input.shiftAfternoonStart,
         shiftNightStart: input.shiftNightStart,
         splitKitchenBar: input.splitKitchenBar,
+        tipEnabled: input.tipEnabled ?? undefined,
+        tipSuggestedPct: input.tipSuggestedPct ?? undefined,
+        requireOpenRegister: input.requireOpenRegister ?? undefined,
       },
     });
     return mapSettings(tenant);

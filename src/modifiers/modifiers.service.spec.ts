@@ -43,8 +43,8 @@ describe('Modificadores', () => {
 
   beforeEach(async () => {
     await prisma.tenant.deleteMany({});
-    tenantId = (await prisma.tenant.create({ data: { name: 'A', plan: 'pro' } })).id;
-    otherTenantId = (await prisma.tenant.create({ data: { name: 'B' } })).id;
+    tenantId = (await prisma.tenant.create({ data: { name: 'A', plan: 'pro', requireOpenRegister: false } })).id;
+    otherTenantId = (await prisma.tenant.create({ data: { name: 'B', requireOpenRegister: false } })).id;
   });
 
   // Café con dos modificadores: Tamaño (una opción, obligatorio) y Extras (varias, opcional)

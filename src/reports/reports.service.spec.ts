@@ -64,6 +64,8 @@ describe('ReportsService', () => {
       waiter?: string;
       payment?: string;
       globalPct?: number;
+      tip?: number;
+      payments?: { method: string; amount: number }[];
       items?: { name: string; unitPrice: number; quantity: number; lineTotal: number; isPromo?: boolean }[];
       tenant?: string;
     },
@@ -78,6 +80,8 @@ describe('ReportsService', () => {
         grossTotal: opts.total,
         totalAmount: opts.total,
         globalDiscountPct: opts.globalPct ?? 0,
+        tipAmount: opts.tip ?? 0,
+        payments: { create: opts.payments ?? [] },
         date: new Date(date),
         items: { create: opts.items ?? [] },
       },
@@ -147,13 +151,42 @@ describe('ReportsService', () => {
     const r = await service.sales(tenantId, { from: '2026-10-10', to: '2026-10-10', tz: BA });
 
     expect(r.byWaiter).toEqual([
-      { name: 'Beto', salesCount: 1, totalAmount: 4000 },
-      { name: 'Ana', salesCount: 2, totalAmount: 1500 },
+      { name: 'Beto', salesCount: 1, totalAmount: 4000, tips: 0 },
+      { name: 'Ana', salesCount: 2, totalAmount: 1500, tips: 0 },
     ]);
     expect(r.byPayment).toEqual([
       { method: 'efectivo', salesCount: 2, totalAmount: 4500 },
       { method: 'tarjeta', salesCount: 1, totalAmount: 1000 },
     ]);
+  });
+
+  it('por método de pago cuenta lo que entró con cada uno: un cobro mixto suma en varios', async () => {
+    await sale('2026-10-10T15:00:00Z', {
+      total: 5000,
+      payments: [{ method: 'tarjeta', amount: 2000 }, { method: 'efectivo', amount: 3000 }],
+    });
+    await sale('2026-10-10T16:00:00Z', { total: 1000, payments: [{ method: 'efectivo', amount: 1000 }] });
+
+    const r = await service.sales(tenantId, { from: '2026-10-10', to: '2026-10-10', tz: BA });
+
+    expect(r.summary.totalAmount).toBe(6000); // la venta es una sola, aunque se pague en dos métodos
+    expect(r.byPayment).toEqual([
+      { method: 'efectivo', salesCount: 2, totalAmount: 4000 },
+      { method: 'tarjeta', salesCount: 1, totalAmount: 2000 },
+    ]);
+  });
+
+  it('las propinas van aparte de la venta y se suman por mozo', async () => {
+    await sale('2026-10-10T15:00:00Z', { total: 5000, waiter: 'Ana', tip: 500 });
+    await sale('2026-10-10T16:00:00Z', { total: 3000, waiter: 'Ana', tip: 300 });
+    await sale('2026-10-10T17:00:00Z', { total: 2000, waiter: 'Beto' });
+
+    const r = await service.sales(tenantId, { from: '2026-10-10', to: '2026-10-10', tz: BA });
+
+    expect(r.summary.totalAmount).toBe(10000); // sin propinas
+    expect(r.summary.tipsTotal).toBe(800);
+    expect(r.byWaiter.find((w) => w.name === 'Ana')?.tips).toBe(800);
+    expect(r.byWaiter.find((w) => w.name === 'Beto')?.tips).toBe(0);
   });
 
   it('las ventas sin detalle (sistema anterior) cuentan en los totales pero no en los platos', async () => {

@@ -171,6 +171,15 @@ model Tenant {
   // Solo tiene efecto si el plan incluye la función.
   splitKitchenBar Boolean @default(false)
 
+  // Propinas: el negocio decide si las ofrece al cobrar y qué porcentaje sugiere
+  tipEnabled      Boolean @default(false)
+  tipSuggestedPct Int     @default(10)
+
+  // Caja: si es true, no se puede cobrar sin una caja abierta
+  requireOpenRegister Boolean @default(true)
+  // Caja abierta en este momento (una por negocio). Es única: así dos aperturas simultáneas no pueden coexistir.
+  openRegisterId      String? @unique
+
   waiters        Waiter[]
   sectors        Sector[]
   menuItems      MenuItem[]
@@ -178,6 +187,7 @@ model Tenant {
   modifierGroups ModifierGroup[]
   tables         Table[]
   sales          Sale[]
+  cashRegisters  CashRegister[]
   users          User[]
 
   @@map("tenants")
@@ -199,18 +209,27 @@ model Sale {
   waiterName    String
   // quién cobró; vacío en las ventas migradas del sistema anterior
   cashierName   String @default("")
+  // método de la venta: el único usado, o "mixto" si se pagó con más de uno (el detalle está en payments)
   paymentMethod String
 
   grossTotal        Float // suma de precio x cantidad, sin descuentos
   discountTotal     Float @default(0) // todo lo descontado (por ítem + general)
   globalDiscountPct Float @default(0)
-  totalAmount       Float // lo que se cobró
+  totalAmount       Float // lo que se vendió (sin propina)
+  // propina: se cobra junto con la cuenta pero NO es venta (no suma a la facturación) y es del mozo
+  tipAmount         Float @default(0)
 
-  date  DateTime   @default(now())
-  items SaleItem[]
+  date     DateTime   @default(now())
+  items    SaleItem[]
+  payments Payment[]
+
+  // caja en la que se cobró (null en las ventas anteriores al control de caja)
+  registerId String?
+  register   CashRegister? @relation(fields: [registerId], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, checkoutId])
   @@index([tenantId, date])
+  @@index([registerId])
   @@map("sales")
 }
 
@@ -314,4 +333,70 @@ model MenuItemModifierGroup {
   @@id([menuItemId, groupId])
   @@index([groupId])
   @@map("menu_item_modifier_groups")
+}
+
+// Un pago de una venta. Una cuenta puede pagarse con varios métodos (pago mixto) y,
+// en efectivo, registra cuánto entregó el cliente y el vuelto.
+model Payment {
+  id String @id @default(uuid())
+
+  saleId String
+  sale   Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  method   String
+  // lo que se aplicó a la cuenta (más propina) con este método; es lo que entra a la caja
+  amount   Float
+  // solo efectivo: lo que entregó el cliente y el vuelto (tendered - amount)
+  tendered Float?
+  change   Float  @default(0)
+
+  @@index([saleId])
+  @@map("payments")
+}
+
+// Turno de caja: se abre con un fondo de efectivo y se cierra contando lo que hay (arqueo).
+model CashRegister {
+  id String @id @default(uuid())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  openedAt      DateTime @default(now())
+  openedByName  String
+  openingAmount Float
+
+  closedAt       DateTime?
+  closedByName   String?
+  // al cerrar: lo que el sistema calculó, lo que el cajero contó y la diferencia (contado - esperado)
+  expectedAmount Float?
+  countedAmount  Float?
+  difference     Float?
+  note           String    @default("")
+
+  movements CashMovement[]
+  sales     Sale[]
+
+  @@index([tenantId, openedAt])
+  @@map("cash_registers")
+}
+
+enum CashMovementType {
+  IN // ingreso de efectivo (ej: cambio que traen)
+  OUT // retiro o gasto (ej: pago a un proveedor)
+}
+
+model CashMovement {
+  id String @id @default(uuid())
+
+  registerId String
+  register   CashRegister @relation(fields: [registerId], references: [id], onDelete: Cascade)
+
+  type      CashMovementType
+  amount    Float
+  reason    String
+  createdBy String
+  createdAt DateTime         @default(now())
+
+  @@index([registerId])
+  @@map("cash_movements")
 }

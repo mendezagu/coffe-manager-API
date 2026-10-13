@@ -31,7 +31,7 @@ export class ReportsService {
 
     const sales = await this.prisma.sale.findMany({
       where: { tenantId, date: { gte: startOfDay(from, tz), lt: startOfDay(addDays(to, 1), tz) } },
-      include: { items: true },
+      include: { items: true, payments: true },
       orderBy: { date: 'asc' },
     });
 
@@ -56,6 +56,8 @@ export class ReportsService {
     let discountTotal = 0;
     let itemsSold = 0;
     let salesWithoutDetail = 0;
+    let tipsTotal = 0;
+    const waiterTips = new Map<string, number>();
 
     for (const sale of sales) {
       totalAmount += sale.totalAmount;
@@ -63,7 +65,16 @@ export class ReportsService {
       discountTotal += sale.discountTotal;
       add(byDay, localDay(sale.date, tz), sale.totalAmount);
       add(byWaiter, sale.waiterName || 'Sin mozo', sale.totalAmount);
-      add(byPayment, sale.paymentMethod || 'sin dato', sale.totalAmount);
+      // Por método de pago se cuenta lo que realmente entró con cada uno (un cobro mixto suma en varios).
+      // Las ventas viejas sin pagos registrados cuentan con su método único.
+      if (sale.payments.length) for (const p of sale.payments) add(byPayment, p.method, p.amount);
+      else add(byPayment, sale.paymentMethod || 'sin dato', sale.totalAmount);
+      // La propina no es venta: va aparte y es del mozo
+      tipsTotal += sale.tipAmount;
+      if (sale.tipAmount > 0) {
+        const key = sale.waiterName || 'Sin mozo';
+        waiterTips.set(key, (waiterTips.get(key) ?? 0) + sale.tipAmount);
+      }
 
       if (sale.items.length === 0) salesWithoutDetail += 1; // ventas del sistema anterior: sin platos
       for (const item of sale.items) {
@@ -93,13 +104,14 @@ export class ReportsService {
         discountTotal: round2(discountTotal),
         itemsSold,
         salesWithoutDetail,
+        tipsTotal: round2(tipsTotal),
       },
       byDay: [...byDay.entries()].map(([date, v]) => ({ date, ...v, totalAmount: round2(v.totalAmount) })),
       items: [...items.entries()]
         .map(([name, v]) => ({ name, quantity: v.quantity, amount: round2(v.amount) }))
         .sort((a, b) => b.amount - a.amount)
         .slice(0, MAX_ITEMS),
-      byWaiter: rank(byWaiter, 'name'),
+      byWaiter: rank(byWaiter, 'name').map((w: any) => ({ ...w, tips: round2(waiterTips.get(w.name) ?? 0) })),
       byPayment: rank(byPayment, 'method'),
     };
   }
