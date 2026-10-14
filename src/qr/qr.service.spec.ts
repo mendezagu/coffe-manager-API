@@ -237,6 +237,22 @@ describe('Pedido por QR', () => {
       await expect(sendCola(table1.qrToken!, CLIENT, '1234')).resolves.toBeDefined();
     });
 
+    it('llamar al mozo funciona sin el código de mesa; pedir la cuenta, no', async () => {
+      await expect(qr.createCall(table1.qrToken!, ip(), undefined, 'WAITER')).resolves.toEqual({ ok: true });
+      expect(await prisma.serviceCall.count({ where: { tableId: table1.id, type: 'WAITER' } })).toBe(1);
+
+      await prisma.order.create({ data: { tableId: table1.id, menuItemId: cola.id, quantity: 1 } });
+      await expect(qr.createCall(table1.qrToken!, ip(), undefined, 'BILL')).rejects.toThrow(ForbiddenException);
+      await expect(qr.createCall(table1.qrToken!, ip(), '1234', 'BILL')).resolves.toEqual({ ok: true });
+    });
+
+    it('el aviso al mozo sin código no deja ver la carta ni pedir', async () => {
+      await qr.createCall(table1.qrToken!, ip(), undefined, 'WAITER');
+      const info: any = await qr.info(table1.qrToken!, ip(), undefined);
+      expect(info.menu).toBeUndefined();
+      await expect(sendCola(table1.qrToken!, CLIENT, undefined)).rejects.toThrow(ForbiddenException);
+    });
+
     it('probar códigos al azar se corta después de unos intentos', async () => {
       const same = '198.51.100.7';
       const results: string[] = [];

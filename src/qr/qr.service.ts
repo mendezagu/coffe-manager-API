@@ -273,7 +273,16 @@ export class QrService {
 
   async createCall(token: string, ip: string, pin: unknown, type: 'WAITER' | 'BILL') {
     callLimiter.hit(ip, 'Ya avisaste hace un momento, el mozo está en camino');
-    const { table, tenant } = await this.resolveWithPin(token, ip, pin);
+    // "Llamar al mozo" se puede usar sin el código de mesa: es justo lo que hace quien no lo tiene. No abre la carta
+    // ni permite pedir, y no se duplica mientras haya un aviso abierto. Pedir la cuenta sí exige el código.
+    let ctx: Awaited<ReturnType<QrService['resolve']>>;
+    if (type === 'WAITER') {
+      ipLimiter.hit(ip);
+      ctx = await this.resolve(token);
+    } else {
+      ctx = await this.resolveWithPin(token, ip, pin);
+    }
+    const { table, tenant } = ctx;
     if (type === 'BILL') {
       const orders = await this.prisma.order.count({ where: { tableId: table.id } });
       if (orders === 0) throw new ConflictException('Todavía no hay consumos en la mesa');
