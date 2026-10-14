@@ -286,6 +286,45 @@ describe('Cobro: pagos mixtos, propinas, cobro por partes y caja', () => {
       await expect(sales.checkout(tenantId, waiterActor, table.id, withDiscount())).rejects.toThrow(ForbiddenException);
     });
 
+    it('la permanencia cuenta desde que se abrió la mesa, aunque un cobro parcial borre los primeros pedidos', async () => {
+      const { table, cafeOrder, tortaOrder } = await tableSetup();
+      const opened = new Date(Date.now() - 90 * 60000); // se abrió hace 90 minutos
+      await prisma.table.update({ where: { id: table.id }, data: { openedAt: opened } });
+
+      // cobro parcial: se paga todo el café y se borra esa línea (la más vieja)
+      const partial = await sales.checkout(tenantId, cashier, table.id, {
+        checkoutId: id(),
+        paymentMethod: 'efectivo',
+        lines: [{ orderId: cafeOrder.id, quantity: 3 }],
+      });
+      expect((await prisma.sale.findUniqueOrThrow({ where: { id: partial._id } })).tableOpenedAt).toBeNull();
+      expect((await prisma.table.findUniqueOrThrow({ where: { id: table.id } })).openedAt).toEqual(opened);
+
+      // cobro final: la mesa se libera y la venta recuerda la apertura original
+      const last = await sales.checkout(tenantId, cashier, table.id, {
+        checkoutId: id(),
+        paymentMethod: 'efectivo',
+        lines: [{ orderId: tortaOrder.id, quantity: 1 }],
+      });
+      const stored = await prisma.sale.findUniqueOrThrow({ where: { id: last._id } });
+      expect(stored.tableOpenedAt).toEqual(opened);
+      expect((await prisma.table.findUniqueOrThrow({ where: { id: table.id } })).openedAt).toBeNull();
+    });
+
+    it('una mesa abierta antes de registrar la apertura usa la orden más vieja', async () => {
+      const { table, cafeOrder, tortaOrder } = await tableSetup(); // sin openedAt
+      const oldest = (await prisma.order.findMany({ where: { tableId: table.id }, orderBy: { createdAt: 'asc' } }))[0].createdAt;
+      const sale = await sales.checkout(tenantId, cashier, table.id, {
+        checkoutId: id(),
+        paymentMethod: 'efectivo',
+        lines: [
+          { orderId: cafeOrder.id, quantity: 3 },
+          { orderId: tortaOrder.id, quantity: 1 },
+        ],
+      });
+      expect((await prisma.sale.findUniqueOrThrow({ where: { id: sale._id } })).tableOpenedAt).toEqual(oldest);
+    });
+
     it('los cobros parciales son idempotentes: repetir el mismo no descuenta dos veces', async () => {
       const { table, cafeOrder } = await tableSetup();
       const checkoutId = id();

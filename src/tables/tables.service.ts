@@ -143,6 +143,7 @@ export class TablesService {
   // pedidos por QR). Valida opciones y stock, y devuelve los ids de las líneas creadas o ampliadas.
   async addItemsTx(tx: Prisma.TransactionClient, tenantId: string, id: string, items: any[]): Promise<string[]> {
     const touched: string[] = [];
+    const alreadyOpen = (await tx.order.count({ where: { tableId: id } })) > 0;
     {
       // 1) Se valida todo lo pedido: que el plato exista y que las opciones elegidas sean válidas.
       const prepared: { item: any; menuItem: { id: string; name: string }; modifiers: ModifierSnapshot[] }[] = [];
@@ -196,6 +197,10 @@ export class TablesService {
           touched.push(created.id);
         }
       }
+    }
+    // Primer pedido de una mesa vacía: así empieza a contarse cuánto tiempo estuvo ocupada
+    if (!alreadyOpen && touched.length > 0) {
+      await tx.table.update({ where: { id }, data: { openedAt: new Date() } });
     }
     return touched;
   }
@@ -313,7 +318,7 @@ export class TablesService {
       }),
       this.prisma.table.update({
         where: { id },
-        data: { available: true, waiterId: null, qrPin: newTablePin() },
+        data: { available: true, waiterId: null, openedAt: null, qrPin: newTablePin() },
       }),
     ]);
 

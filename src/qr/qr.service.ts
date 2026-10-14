@@ -327,7 +327,7 @@ export class QrService {
       this.prisma.qrOrderRequest.findMany({
         where: { tenantId, status: 'PENDING', createdAt: { gte: since } },
         orderBy: { createdAt: 'asc' },
-        include: { table: { select: { name: true, available: true, waiterId: true } } },
+        include: { table: { select: { name: true, waiterId: true, _count: { select: { orders: true } } } } },
       }),
       this.prisma.serviceCall.findMany({
         where: { tenantId, status: 'OPEN', createdAt: { gte: since } },
@@ -341,7 +341,7 @@ export class QrService {
         id: r.id,
         tableId: r.tableId,
         tableName: r.table.name,
-        tableFree: r.table.available,
+        tableFree: r.table._count.orders === 0,
         hasWaiter: !!r.table.waiterId,
         customerName: r.customerName,
         createdAt: r.createdAt,

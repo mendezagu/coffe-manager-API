@@ -58,12 +58,14 @@ model MenuItem {
 }
 
 model Table {
-  id        String  @id @default(uuid())
+  id        String    @id @default(uuid())
   // orden fijo de las mesas: sin esto Postgres las devuelve en orden físico y una mesa
   // editada (al ocuparla) saltaba al final de la lista
-  seq       Int     @default(autoincrement())
+  seq       Int       @default(autoincrement())
   name      String
-  available Boolean @default(true)
+  available Boolean   @default(true)
+  // cuándo se cargó el primer pedido de la mesa abierta (null = libre); se borra al liberarla
+  openedAt  DateTime?
 
   waiterId String?
   waiter   Waiter? @relation(fields: [waiterId], references: [id], onDelete: SetNull)
@@ -245,9 +247,11 @@ model Sale {
   // propina: se cobra junto con la cuenta pero NO es venta (no suma a la facturación) y es del mozo
   tipAmount         Float @default(0)
 
-  date     DateTime   @default(now())
-  items    SaleItem[]
-  payments Payment[]
+  date          DateTime   @default(now())
+  // cuándo se pidió lo primero en la mesa; solo en el cobro que la libera (sirve para la permanencia promedio)
+  tableOpenedAt DateTime?
+  items         SaleItem[]
+  payments      Payment[]
 
   // caja en la que se cobró (null en las ventas anteriores al control de caja)
   registerId String?

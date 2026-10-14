@@ -41,6 +41,26 @@ describe('TablesService', () => {
     prisma.menuItem.create({ data: { name, price: 100, tenantId: tid } });
 
   describe('addItems', () => {
+    it('registra la hora de apertura con el primer pedido y no la cambia con los siguientes', async () => {
+      const table = await newTable('Mesa 1');
+      const item = await newItem();
+      expect((await prisma.table.findUniqueOrThrow({ where: { id: table.id } })).openedAt).toBeNull();
+
+      await service.addItems(tenantId, table.id, [{ id: item.id, quantity: 1 }]);
+      const first = (await prisma.table.findUniqueOrThrow({ where: { id: table.id } })).openedAt;
+      expect(first).not.toBeNull();
+
+      await new Promise((r) => setTimeout(r, 20));
+      await service.addItems(tenantId, table.id, [{ id: item.id, quantity: 1, note: 'otro' }]);
+      expect((await prisma.table.findUniqueOrThrow({ where: { id: table.id } })).openedAt).toEqual(first);
+    });
+
+    it('un pedido que falla no deja la mesa marcada como abierta', async () => {
+      const table = await newTable('Mesa 1');
+      await expect(service.addItems(tenantId, table.id, [{ id: 'no-existe', quantity: 1 }])).rejects.toThrow();
+      expect((await prisma.table.findUniqueOrThrow({ where: { id: table.id } })).openedAt).toBeNull();
+    });
+
     it('fusiona en la misma línea cuando el ítem y la nota coinciden (ambas vacías)', async () => {
       const table = await newTable('Mesa 1');
       const item = await newItem();
@@ -150,6 +170,12 @@ describe('TablesService', () => {
       const updatedChild = await prisma.table.findUnique({ where: { id: child.id } });
       expect(updatedChild?.controlledById).toBeNull();
       expect(updatedChild?.available).toBe(true);
+    });
+
+    it('borra la hora de apertura: la próxima mesa empieza de cero', async () => {
+      const table = await newTable('Mesa 1', { openedAt: new Date() });
+      await service.resetTable(tenantId, table.id);
+      expect((await prisma.table.findUniqueOrThrow({ where: { id: table.id } })).openedAt).toBeNull();
     });
   });
 

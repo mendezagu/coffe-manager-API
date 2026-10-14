@@ -56,6 +56,7 @@ describe('Permisos por rol en las rutas', () => {
 
   it('reportes, usuarios y cambios de configuración son solo del administrador', () => {
     expect(rolesOf(ReportsController, 'sales')).toEqual(only(ADMIN));
+    expect(rolesOf(ReportsController, 'live')).toEqual(only(ADMIN));
     for (const m of ['findAll', 'create', 'update', 'remove']) expect(rolesOf(UsersController, m)).toEqual(only(ADMIN));
     expect(rolesOf(SettingsController, 'update')).toEqual(only(ADMIN));
   });

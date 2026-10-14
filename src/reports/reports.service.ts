@@ -18,6 +18,49 @@ const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Resumen del momento para el Inicio del administrador: ventas de hoy comparadas con ayer HASTA LA MISMA
+   * HORA (si no, a media mañana siempre "bajaría") y cuánto tiempo estuvieron ocupadas las mesas hoy.
+   */
+  async live(tenantId: string, tz = 'UTC', now = new Date()) {
+    if (!isValidTimeZone(tz)) throw new BadRequestException('Zona horaria no válida');
+
+    const today = localDay(now, tz);
+    const todayStart = startOfDay(today, tz);
+    const yesterdayStart = startOfDay(addDays(today, -1), tz);
+    const yesterdayNow = new Date(yesterdayStart.getTime() + (now.getTime() - todayStart.getTime()));
+
+    const [todaySales, yesterdaySales] = await Promise.all([
+      this.prisma.sale.findMany({
+        where: { tenantId, date: { gte: todayStart, lte: now } },
+        select: { totalAmount: true, date: true, tableOpenedAt: true },
+      }),
+      this.prisma.sale.aggregate({
+        where: { tenantId, date: { gte: yesterdayStart, lte: yesterdayNow } },
+        _sum: { totalAmount: true },
+        _count: true,
+      }),
+    ]);
+
+    const total = round2(todaySales.reduce((sum, s) => sum + s.totalAmount, 0));
+    const previous = round2(yesterdaySales._sum.totalAmount ?? 0);
+
+    // Permanencia: de la primera orden hasta el cobro que liberó la mesa
+    const stays = todaySales
+      .filter((s) => s.tableOpenedAt)
+      .map((s) => (s.date.getTime() - s.tableOpenedAt!.getTime()) / 60000)
+      .filter((m) => m >= 0);
+
+    return {
+      sales: { total, count: todaySales.length },
+      yesterday: { total: previous, count: yesterdaySales._count },
+      // null si ayer a esta hora no se vendió nada (no hay con qué comparar)
+      changePct: previous > 0 ? round2(((total - previous) / previous) * 100) : null,
+      averageStayMinutes: stays.length ? Math.round(stays.reduce((a, b) => a + b, 0) / stays.length) : null,
+      staysCount: stays.length,
+    };
+  }
+
   async sales(tenantId: string, query: SalesReportQuery) {
     const tz = query.tz || 'UTC';
     if (!isValidTimeZone(tz)) throw new BadRequestException('Zona horaria no válida');

@@ -7,6 +7,10 @@ import { ReportsService } from './reports.service';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
+class LiveQueryDto {
+  @IsOptional() @IsString() @MaxLength(64) tz?: string;
+}
+
 class SalesReportDto {
   @IsOptional() @Matches(DAY, { message: 'from debe ser YYYY-MM-DD' }) from?: string;
   @IsOptional() @Matches(DAY, { message: 'to debe ser YYYY-MM-DD' }) to?: string;
@@ -18,6 +22,12 @@ class SalesReportDto {
 @Controller('api/reports')
 export class ReportsController {
   constructor(private readonly reports: ReportsService) {}
+
+  // Resumen de hoy para el Inicio (ventas vs ayer y permanencia promedio de las mesas)
+  @Get('live')
+  live(@TenantId() tenantId: string, @Query() query: LiveQueryDto) {
+    return this.reports.live(tenantId, query.tz);
+  }
 
   @Get('sales')
   sales(@TenantId() tenantId: string, @Query() query: SalesReportDto) {

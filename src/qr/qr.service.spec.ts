@@ -384,6 +384,24 @@ describe('Pedido por QR', () => {
       expect((await prisma.qrOrderRequest.findUniqueOrThrow({ where: { id: sent.id } })).status).toBe('PENDING');
     });
 
+    it('la bandeja marca la mesa como libre según sus órdenes, no por la marca "available"', async () => {
+      // mesa que un mozo abrió desde la app: tiene órdenes aunque la marca de la base siga en "libre"
+      await prisma.order.create({ data: { tableId: table1.id, menuItemId: cola.id, quantity: 1 } });
+      await sendCola(table1.qrToken!);
+      const withOrders: any = await qr.inbox(tenantId);
+      expect(withOrders.requests[0].tableFree).toBe(false);
+
+      await sendCola(table2.qrToken!);
+      const inbox: any = await qr.inbox(tenantId);
+      expect(inbox.requests.find((r: any) => r.tableName === 'Mesa 2').tableFree).toBe(true);
+    });
+
+    it('confirmar un pedido en una mesa vacía registra su hora de apertura', async () => {
+      const sent: any = await sendCola();
+      await qr.confirm(tenantId, sent.id, { actorName: 'Ana' });
+      expect((await prisma.table.findUniqueOrThrow({ where: { id: table1.id } })).openedAt).not.toBeNull();
+    });
+
     it('con confirmación automática el pedido entra solo', async () => {
       await prisma.tenant.update({ where: { id: tenantId }, data: { qrAutoConfirm: true } });
       const sent: any = await sendCola();

@@ -230,6 +230,9 @@ export class SalesService {
             globalDiscountPct: globalPct,
             totalAmount,
             tipAmount,
+            // hora en que se abrió la mesa; en mesas abiertas antes de registrarla, la de su orden más vieja
+            // (las órdenes vienen de la más vieja a la más nueva)
+            tableOpenedAt: isFull ? table.openedAt ?? table.orders[0]?.createdAt ?? null : null,
             registerId: fresh.openRegisterId,
             items: { create: lines },
             payments: { create: payments },
@@ -247,7 +250,7 @@ export class SalesService {
             where: { controlledById: tableId, tenantId },
             data: { controlledById: null, available: true },
           });
-          await tx.table.update({ where: { id: tableId }, data: { available: true, waiterId: null, qrPin: newTablePin() } });
+          await tx.table.update({ where: { id: tableId }, data: { available: true, waiterId: null, openedAt: null, qrPin: newTablePin() } });
         } else {
           // Cobro parcial: se descuentan los platos cobrados y la mesa sigue ocupada con el resto
           for (const order of table.orders) {

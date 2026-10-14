@@ -233,3 +233,92 @@ describe('ReportsService', () => {
     expect(r.range.to).toBe(localDay(new Date(), BA));
   });
 });
+
+describe('ReportsService.live (resumen del Inicio)', () => {
+  let prisma: PrismaService;
+  let service: ReportsService;
+  let tenantId: string;
+  let otherTenantId: string;
+  let n = 0;
+  // 15:00 en Buenos Aires
+  const NOW = new Date('2026-10-14T18:00:00Z');
+
+  beforeAll(async () => {
+    prisma = new PrismaClient({ datasources: { db: { url: TEST_DATABASE_URL } } }) as PrismaService;
+    await prisma.$connect();
+    service = new ReportsService(prisma);
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  beforeEach(async () => {
+    await prisma.tenant.deleteMany({});
+    tenantId = (await prisma.tenant.create({ data: { name: 'A' } })).id;
+    otherTenantId = (await prisma.tenant.create({ data: { name: 'B' } })).id;
+  });
+
+  const sale = (date: string, total: number, opts: { openedAt?: string; tenant?: string } = {}) =>
+    prisma.sale.create({
+      data: {
+        tenantId: opts.tenant ?? tenantId,
+        checkoutId: `live-${++n}-${Math.random()}`,
+        tableName: 'Mesa 1',
+        waiterName: 'Mario',
+        paymentMethod: 'efectivo',
+        grossTotal: total,
+        totalAmount: total,
+        date: new Date(date),
+        tableOpenedAt: opts.openedAt ? new Date(opts.openedAt) : null,
+      },
+    });
+
+  it('compara hoy con ayer hasta la misma hora y promedia la permanencia', async () => {
+    await sale('2026-10-14T12:00:00Z', 1000, { openedAt: '2026-10-14T11:30:00Z' }); // 30 min
+    await sale('2026-10-14T15:00:00Z', 2000, { openedAt: '2026-10-14T14:00:00Z' }); // 60 min
+    await sale('2026-10-14T20:00:00Z', 5000); // todavía no pasó: no cuenta
+    await sale('2026-10-13T10:00:00Z', 1500); // ayer, antes de esta hora: cuenta
+    await sale('2026-10-13T20:00:00Z', 9999); // ayer, después de esta hora: no cuenta
+
+    const live = await service.live(tenantId, BA, NOW);
+    expect(live.sales).toEqual({ total: 3000, count: 2 });
+    expect(live.yesterday).toEqual({ total: 1500, count: 1 });
+    expect(live.changePct).toBe(100);
+    expect(live.averageStayMinutes).toBe(45);
+    expect(live.staysCount).toBe(2);
+  });
+
+  it('el día empieza a la medianoche local, no la de UTC', async () => {
+    // 01:00 UTC del 14 = 22:00 del 13 en Buenos Aires: es de ayer, no de hoy (aunque en UTC ya sea 14).
+    // Tampoco entra en la comparación, que llega solo hasta las 15:00 de ayer.
+    await sale('2026-10-14T01:00:00Z', 700);
+    const live = await service.live(tenantId, BA, NOW);
+    expect(live.sales.total).toBe(0);
+    expect(live.yesterday.total).toBe(0);
+  });
+
+  it('sin ventas ayer no hay porcentaje, y sin cierres de mesa no hay permanencia', async () => {
+    await sale('2026-10-14T12:00:00Z', 1000);
+    const live = await service.live(tenantId, BA, NOW);
+    expect(live.changePct).toBeNull();
+    expect(live.averageStayMinutes).toBeNull();
+    expect(live.sales.total).toBe(1000);
+  });
+
+  it('muestra una baja como porcentaje negativo', async () => {
+    await sale('2026-10-14T12:00:00Z', 500);
+    await sale('2026-10-13T12:00:00Z', 1000);
+    expect((await service.live(tenantId, BA, NOW)).changePct).toBe(-50);
+  });
+
+  it('solo cuenta las ventas del propio negocio', async () => {
+    await sale('2026-10-14T12:00:00Z', 1000, { tenant: otherTenantId });
+    const live = await service.live(tenantId, BA, NOW);
+    expect(live.sales).toEqual({ total: 0, count: 0 });
+  });
+
+  it('rechaza una zona horaria inválida', async () => {
+    await expect(service.live(tenantId, 'Marte/Olimpo', NOW)).rejects.toThrow(BadRequestException);
+  });
+});
