@@ -20,6 +20,7 @@ export interface UpdateSettingsInput {
   shiftAfternoonStart?: number;
   shiftNightStart?: number;
   splitKitchenBar?: boolean;
+  cashierDiscounts?: boolean;
   tipEnabled?: boolean;
   tipSuggestedPct?: number;
   requireOpenRegister?: boolean;
@@ -60,6 +61,7 @@ export function mapSettings(t: Tenant) {
     splitKitchenBar: t.splitKitchenBar,
     splitActive: t.splitKitchenBar && hasFeature(t.plan, 'kitchen_bar_split'),
     // Propinas y caja
+    cashierDiscounts: t.cashierDiscounts,
     tipEnabled: t.tipEnabled,
     tipSuggestedPct: t.tipSuggestedPct,
     requireOpenRegister: t.requireOpenRegister,
@@ -141,6 +143,7 @@ export class SettingsService {
         shiftAfternoonStart: input.shiftAfternoonStart,
         shiftNightStart: input.shiftNightStart,
         splitKitchenBar: input.splitKitchenBar,
+        cashierDiscounts: input.cashierDiscounts ?? undefined,
         tipEnabled: input.tipEnabled ?? undefined,
         tipSuggestedPct: input.tipSuggestedPct ?? undefined,
         requireOpenRegister: input.requireOpenRegister ?? undefined,

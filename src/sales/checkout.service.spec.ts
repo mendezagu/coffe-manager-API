@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaClient, Role } from '@prisma/client';
 import { CashService } from '../cash/cash.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -262,6 +262,28 @@ describe('Cobro: pagos mixtos, propinas, cobro por partes y caja', () => {
           items: [{ orderId: tortaOrder.id, discount: 10 }], // la torta no se está cobrando
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('el cajero solo puede dar descuentos si el negocio lo habilitó; el mozo nunca', async () => {
+      const { table, cafeOrder } = await tableSetup();
+      const withDiscount = () => ({
+        checkoutId: id(),
+        paymentMethod: 'efectivo',
+        lines: [{ orderId: cafeOrder.id, quantity: 1 }],
+        globalDiscount: 10,
+      });
+
+      // apagado (por defecto): el cajero no puede
+      await expect(sales.checkout(tenantId, cashier, table.id, withDiscount())).rejects.toThrow(/no habilitó/);
+
+      // encendido: el cajero puede
+      await prisma.tenant.update({ where: { id: tenantId }, data: { cashierDiscounts: true } });
+      const sale = await sales.checkout(tenantId, cashier, table.id, withDiscount());
+      expect(sale.totalAmount).toBe(900);
+
+      // el mozo no cobra con descuento aunque esté encendido
+      const waiterActor: Actor = { id: 'w1', name: 'Walter', role: Role.WAITER };
+      await expect(sales.checkout(tenantId, waiterActor, table.id, withDiscount())).rejects.toThrow(ForbiddenException);
     });
 
     it('los cobros parciales son idempotentes: repetir el mismo no descuenta dos veces', async () => {

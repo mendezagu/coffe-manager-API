@@ -122,8 +122,14 @@ export class SalesService {
     const itemDiscounts = new Map((input.items ?? []).map((i) => [i.orderId, i.discount]));
     const globalPct = input.globalDiscount ?? 0;
     const wantsDiscount = globalPct > 0 || [...itemDiscounts.values()].some((d) => d > 0);
-    if (wantsDiscount && actor.role !== Role.ADMIN) {
-      throw new ForbiddenException('Solo un administrador puede aplicar descuentos');
+    // Descuentos: el administrador siempre; el cajero solo si el negocio lo habilitó en "Mi negocio"
+    const mayDiscount = actor.role === Role.ADMIN || (actor.role === Role.CASHIER && tenant.cashierDiscounts);
+    if (wantsDiscount && !mayDiscount) {
+      throw new ForbiddenException(
+        actor.role === Role.CASHIER
+          ? 'El negocio no habilitó los descuentos para el cajero'
+          : 'Solo un administrador puede aplicar descuentos',
+      );
     }
 
     const table = await this.prisma.table.findFirst({
