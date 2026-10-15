@@ -145,12 +145,24 @@ describe('CategoriesService', () => {
   });
 
   describe('opción de separar cocina y barra (settings)', () => {
-    it('un negocio con plan que la incluye puede activarla', async () => {
-      const s = await settings.update(proId, { splitKitchenBar: true });
+    it('un negocio con plan que la incluye puede activarla (si usa la cocina)', async () => {
+      const s = await settings.update(proId, { splitKitchenBar: true, kitchenEnabled: true });
 
       expect(s.features).toContain('kitchen_bar_split');
       expect(s.splitKitchenBar).toBe(true);
+      expect(s.kitchenEnabled).toBe(true);
       expect(s.splitActive).toBe(true);
+    });
+
+    it('sin cocina habilitada, separar cocina y barra no rige aunque esté elegido', async () => {
+      const s = await settings.update(proId, { splitKitchenBar: true });
+
+      expect(s.kitchenEnabled).toBe(false); // apagada por defecto
+      expect(s.splitKitchenBar).toBe(true);
+      expect(s.splitActive).toBe(false);
+
+      expect((await settings.update(proId, { kitchenEnabled: true })).splitActive).toBe(true);
+      expect((await settings.update(proId, { kitchenEnabled: false })).splitActive).toBe(false);
     });
 
     it('un negocio con plan básico no puede activarla, pero sí dejarla apagada', async () => {

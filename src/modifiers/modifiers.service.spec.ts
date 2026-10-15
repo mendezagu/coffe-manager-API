@@ -285,6 +285,7 @@ describe('Modificadores', () => {
 
   describe('cocina', () => {
     it('ve las opciones elegidas en cada línea', async () => {
+      await prisma.tenant.update({ where: { id: tenantId }, data: { kitchenEnabled: true } }); // la cocina es opcional
       const s = await cafeSetup();
       await tables.addItems(tenantId, s.table.id, [{ id: s.cafe._id, quantity: 1, modifiers: [s.grande, s.shot] }]);
 

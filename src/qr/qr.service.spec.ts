@@ -290,6 +290,22 @@ describe('Pedido por QR', () => {
       expect(otherTableSeen.requests).toEqual([]);
     });
 
+    it('sin cocina el pedido termina en "confirmado": no promete pasos que nadie va a marcar', async () => {
+      // el negocio no usa la pantalla de cocina (por defecto)
+      const info: any = await qr.info(table1.qrToken!, ip(), undefined);
+      expect(info.kitchen).toBe(false);
+
+      const sent: any = await sendCola();
+      await qr.confirm(tenantId, sent.id, { actorName: 'Ana' });
+      await prisma.order.updateMany({ data: { status: 'READY' } });
+      const seen: any = await qr.clientOrders(table1.qrToken!, ip(), undefined, CLIENT);
+      expect(seen.requests[0].step).toBe('CONFIRMED');
+
+      await prisma.tenant.update({ where: { id: tenantId }, data: { kitchenEnabled: true } });
+      expect(((await qr.info(table1.qrToken!, ip(), undefined)) as any).kitchen).toBe(true);
+      expect(((await qr.clientOrders(table1.qrToken!, ip(), undefined, CLIENT)) as any).requests[0].step).toBe('READY');
+    });
+
     it('puede cancelar su pedido pendiente; el de otro, no', async () => {
       const mine: any = await sendCola(table1.qrToken!, CLIENT);
       await expect(qr.cancelRequest(table1.qrToken!, ip(), undefined, mine.id, OTHER_CLIENT)).rejects.toThrow(ConflictException);
@@ -300,6 +316,7 @@ describe('Pedido por QR', () => {
     });
 
     it('sigue el avance: recibido → confirmado → en preparación → listo', async () => {
+      await prisma.tenant.update({ where: { id: tenantId }, data: { kitchenEnabled: true } });
       const sent: any = await sendCola();
       const stepOf = async () => ((await qr.clientOrders(table1.qrToken!, ip(), undefined, CLIENT)) as any).requests[0].step;
       expect(await stepOf()).toBe('RECEIVED');

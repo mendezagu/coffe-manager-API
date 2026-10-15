@@ -22,6 +22,7 @@ class UpdateSettingsDto {
   @IsOptional() @IsInt() @Min(0) @Max(23) shiftMorningStart?: number;
   @IsOptional() @IsInt() @Min(0) @Max(23) shiftAfternoonStart?: number;
   @IsOptional() @IsInt() @Min(0) @Max(23) shiftNightStart?: number;
+  @IsOptional() @IsBoolean() kitchenEnabled?: boolean;
   @IsOptional() @IsBoolean() splitKitchenBar?: boolean;
   @IsOptional() @IsBoolean() cashierDiscounts?: boolean;
   @IsOptional() @IsBoolean() tipEnabled?: boolean;

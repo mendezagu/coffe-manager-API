@@ -19,7 +19,15 @@ export class KitchenService {
    */
   async isSplit(tenantId: string): Promise<boolean> {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
-    return !!tenant && tenant.splitKitchenBar && hasFeature(tenant.plan, 'kitchen_bar_split');
+    return !!tenant && tenant.kitchenEnabled && tenant.splitKitchenBar && hasFeature(tenant.plan, 'kitchen_bar_split');
+  }
+
+  // La cocina es opcional: si el negocio no la habilitó en "Mi negocio", no hay pantalla ni estados de pedido.
+  private async assertEnabled(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant?.kitchenEnabled) {
+      throw new ForbiddenException('La cocina no está habilitada en este negocio. Se activa en "Mi negocio".');
+    }
   }
 
   private destinationOf(line: { menuItem: { category: { destination: Destination } | null } | null }): Destination {
@@ -34,6 +42,7 @@ export class KitchenService {
   }
 
   async list(tenantId: string, role: Role, requested?: Destination) {
+    await this.assertEnabled(tenantId);
     const split = await this.isSplit(tenantId);
     const since = new Date(Date.now() - READY_VISIBLE_MS);
     const orders = await this.prisma.order.findMany({
@@ -67,6 +76,7 @@ export class KitchenService {
   }
 
   async setStatus(tenantId: string, role: Role, id: string, status: OrderStatus) {
+    await this.assertEnabled(tenantId);
     const order = await this.prisma.order.findFirst({ where: { id, table: { tenantId } }, include: LINE_INCLUDE });
     if (!order) throw new NotFoundException('Orden no encontrada');
     if (!this.canHandle(role, await this.isSplit(tenantId), this.destinationOf(order))) {
@@ -77,6 +87,7 @@ export class KitchenService {
   }
 
   async setManyStatus(tenantId: string, role: Role, ids: string[], status: OrderStatus) {
+    await this.assertEnabled(tenantId);
     const [orders, split] = await Promise.all([
       this.prisma.order.findMany({ where: { id: { in: ids }, table: { tenantId } }, include: LINE_INCLUDE }),
       this.isSplit(tenantId),

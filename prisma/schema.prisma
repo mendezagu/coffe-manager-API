@@ -180,6 +180,8 @@ model Tenant {
   plan            String  @default("pro")
   // El negocio elige si manda todo a cocina (false) o separa cocina y barra (true).
   // Solo tiene efecto si el plan incluye la función.
+  // Pantalla de cocina (estados de los pedidos, comandas): el negocio decide si la usa. Apagada por defecto.
+  kitchenEnabled  Boolean @default(false)
   splitKitchenBar Boolean @default(false)
 
   // Propinas: el negocio decide si las ofrece al cobrar y qué porcentaje sugiere

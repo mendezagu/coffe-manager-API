@@ -19,6 +19,7 @@ export interface UpdateSettingsInput {
   shiftMorningStart?: number;
   shiftAfternoonStart?: number;
   shiftNightStart?: number;
+  kitchenEnabled?: boolean;
   splitKitchenBar?: boolean;
   cashierDiscounts?: boolean;
   tipEnabled?: boolean;
@@ -58,8 +59,10 @@ export function mapSettings(t: Tenant) {
     // es lo que realmente rige (elegido Y permitido por el plan).
     plan: t.plan,
     features: featuresOf(t.plan),
+    // Cocina: lo que el negocio eligió. Separar cocina y barra solo rige si hay cocina, lo eligió y el plan lo permite.
+    kitchenEnabled: t.kitchenEnabled,
     splitKitchenBar: t.splitKitchenBar,
-    splitActive: t.splitKitchenBar && hasFeature(t.plan, 'kitchen_bar_split'),
+    splitActive: t.kitchenEnabled && t.splitKitchenBar && hasFeature(t.plan, 'kitchen_bar_split'),
     // Propinas y caja
     cashierDiscounts: t.cashierDiscounts,
     tipEnabled: t.tipEnabled,
@@ -142,6 +145,7 @@ export class SettingsService {
         shiftMorningStart: input.shiftMorningStart,
         shiftAfternoonStart: input.shiftAfternoonStart,
         shiftNightStart: input.shiftNightStart,
+        kitchenEnabled: input.kitchenEnabled ?? undefined,
         splitKitchenBar: input.splitKitchenBar,
         cashierDiscounts: input.cashierDiscounts ?? undefined,
         tipEnabled: input.tipEnabled ?? undefined,

@@ -36,7 +36,7 @@ describe('KitchenService', () => {
   // Mesa con tres líneas: una de barra, una de cocina y una de un plato sin categoría
   async function setup(opts: { plan: string; split: boolean }) {
     await prisma.tenant.deleteMany({});
-    tenantId = (await prisma.tenant.create({ data: { name: 'A', plan: opts.plan, splitKitchenBar: opts.split } })).id;
+    tenantId = (await prisma.tenant.create({ data: { name: 'A', plan: opts.plan, splitKitchenBar: opts.split, kitchenEnabled: true } })).id;
     otherTenantId = (await prisma.tenant.create({ data: { name: 'B' } })).id;
 
     const bar = await prisma.category.create({ data: { tenantId, name: 'Bebidas', destination: Destination.BAR } });
@@ -112,10 +112,36 @@ describe('KitchenService', () => {
     });
   });
 
+  describe('cocina opcional', () => {
+    beforeEach(async () => {
+      await setup({ plan: 'pro', split: true });
+      await prisma.tenant.update({ where: { id: tenantId }, data: { kitchenEnabled: false } });
+    });
+
+    it('sin habilitar la cocina no hay pantalla ni se pueden cambiar estados', async () => {
+      await expect(service.list(tenantId, Role.ADMIN)).rejects.toThrow(ForbiddenException);
+      await expect(service.list(tenantId, Role.KITCHEN)).rejects.toThrow(ForbiddenException);
+      await expect(service.setStatus(tenantId, Role.ADMIN, orderKitchen, 'READY')).rejects.toThrow(ForbiddenException);
+      await expect(service.setManyStatus(tenantId, Role.ADMIN, [orderKitchen], 'READY')).rejects.toThrow(ForbiddenException);
+      expect((await prisma.order.findUniqueOrThrow({ where: { id: orderKitchen } })).status).toBe('PENDING');
+    });
+
+    it('separar cocina y barra no rige si no hay cocina, aunque haya quedado activado', async () => {
+      expect(await service.isSplit(tenantId)).toBe(false);
+    });
+
+    it('al habilitarla vuelve a funcionar', async () => {
+      await prisma.tenant.update({ where: { id: tenantId }, data: { kitchenEnabled: true } });
+      expect((await service.list(tenantId, Role.ADMIN)).length).toBeGreaterThan(0);
+      expect(await service.isSplit(tenantId)).toBe(true);
+    });
+  });
+
   describe('aislamiento entre negocios', () => {
     beforeEach(() => setup({ plan: 'pro', split: true }));
 
     it('no ve ni mueve pedidos de otro negocio', async () => {
+      await prisma.tenant.update({ where: { id: otherTenantId }, data: { kitchenEnabled: true } });
       expect(await service.list(otherTenantId, Role.ADMIN)).toEqual([]);
       await expect(service.setStatus(otherTenantId, Role.ADMIN, orderBar, 'READY')).rejects.toThrow(NotFoundException);
       expect((await service.setManyStatus(otherTenantId, Role.ADMIN, [orderBar], 'READY')).updated).toBe(0);

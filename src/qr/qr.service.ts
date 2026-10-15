@@ -109,6 +109,8 @@ export class QrService {
       table: { name: table.name },
       requiresPin: tenant.qrRequirePin,
       autoConfirm: tenant.qrAutoConfirm,
+      // Sin cocina no hay "en preparación" ni "listo": el pedido termina cuando el mozo lo confirma
+      kitchen: tenant.kitchenEnabled,
       limits: { maxPending: MAX_PENDING_PER_TABLE, minSecondsBetweenSends: MIN_SECONDS_BETWEEN_SENDS },
     };
     if (!(await this.checkPin(ctx, token, ip, pin))) return { ...base, pinOk: false };
@@ -240,12 +242,12 @@ export class QrService {
       }
     }
     const fresh = await this.prisma.qrOrderRequest.findUniqueOrThrow({ where: { id: created.id } });
-    return this.clientView(fresh);
+    return this.clientView(fresh, tenant.kitchenEnabled);
   }
 
   // Los pedidos de ESTE celular en ESTA mesa, con cómo van avanzando.
   async clientOrders(token: string, ip: string, pin: unknown, clientId: string) {
-    const { table } = await this.resolveWithPin(token, ip, pin);
+    const { table, tenant } = await this.resolveWithPin(token, ip, pin);
     const since = new Date(Date.now() - VISIBLE_HOURS * 3600_000);
     const [requests, calls] = await Promise.all([
       this.prisma.qrOrderRequest.findMany({
@@ -256,7 +258,7 @@ export class QrService {
       this.prisma.serviceCall.findMany({ where: { tableId: table.id, status: 'OPEN' } }),
     ]);
     return {
-      requests: await Promise.all(requests.map((r) => this.clientView(r))),
+      requests: await Promise.all(requests.map((r) => this.clientView(r, tenant.kitchenEnabled))),
       calls: { waiter: calls.some((c) => c.type === 'WAITER'), bill: calls.some((c) => c.type === 'BILL') },
     };
   }
@@ -294,14 +296,14 @@ export class QrService {
   }
 
   // Estado que ve el cliente. "Confirmado → En preparación → Listo" sale de las órdenes reales de la mesa.
-  private async clientView(r: QrOrderRequest) {
+  private async clientView(r: QrOrderRequest, kitchen: boolean) {
     const items = readItems(r.items);
     let step: 'RECEIVED' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'REJECTED' | 'CANCELLED' = 'RECEIVED';
     if (r.status === 'REJECTED') step = 'REJECTED';
     else if (r.status === 'CANCELLED') step = 'CANCELLED';
     else if (r.status === 'CONFIRMED') {
       step = 'CONFIRMED';
-      const ids = Array.isArray(r.orderIds) ? (r.orderIds as string[]) : [];
+      const ids = kitchen && Array.isArray(r.orderIds) ? (r.orderIds as string[]) : [];
       const orders = ids.length ? await this.prisma.order.findMany({ where: { id: { in: ids } }, select: { status: true } }) : [];
       if (orders.length && orders.every((o) => o.status === 'READY')) step = 'READY';
       else if (orders.some((o) => o.status === 'PREPARING' || o.status === 'READY')) step = 'PREPARING';
