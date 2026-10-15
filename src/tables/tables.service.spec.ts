@@ -1,5 +1,5 @@
-import { NotFoundException } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { PrismaClient, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { TablesService } from './tables.service';
 
@@ -127,6 +127,41 @@ describe('TablesService', () => {
       const updatedChild = await prisma.table.findUnique({ where: { id: child.id } });
       expect(updatedChild?.controlledById).toBe(parent.id);
       expect(updatedChild?.available).toBe(false);
+    });
+  });
+
+  describe('eliminar ítems según el rol', () => {
+    async function tableWithLine() {
+      const table = await newTable('Mesa 1');
+      const item = await newItem();
+      const order = await prisma.order.create({ data: { tableId: table.id, menuItemId: item.id, quantity: 1 } });
+      return { table, order };
+    }
+
+    it('el administrador siempre puede, aunque la opción esté apagada', async () => {
+      const { table, order } = await tableWithLine();
+      await service.removeOrder(tenantId, table.id, [order.id], Role.ADMIN);
+      expect(await prisma.order.count({ where: { tableId: table.id } })).toBe(0);
+    });
+
+    it('mozo y cajero no pueden si el negocio no lo habilitó', async () => {
+      const { table, order } = await tableWithLine();
+      await expect(service.removeOrder(tenantId, table.id, [order.id], Role.WAITER)).rejects.toThrow(ForbiddenException);
+      await expect(service.removeOrder(tenantId, table.id, [order.id], Role.CASHIER)).rejects.toThrow(/Solo el administrador/);
+      expect(await prisma.order.count({ where: { tableId: table.id } })).toBe(1);
+    });
+
+    it('con la opción activada, mozo y cajero pueden', async () => {
+      await prisma.tenant.update({ where: { id: tenantId }, data: { staffCanRemoveItems: true } });
+      const { table, order } = await tableWithLine();
+      await service.removeOrder(tenantId, table.id, [order.id], Role.WAITER);
+      expect(await prisma.order.count({ where: { tableId: table.id } })).toBe(0);
+    });
+
+    it('la opción de un negocio no habilita a los de otro', async () => {
+      await prisma.tenant.update({ where: { id: otherTenantId }, data: { staffCanRemoveItems: true } });
+      const { table, order } = await tableWithLine();
+      await expect(service.removeOrder(tenantId, table.id, [order.id], Role.WAITER)).rejects.toThrow(ForbiddenException);
     });
   });
 

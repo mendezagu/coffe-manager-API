@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Req } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator';
 import { TenantId } from '../auth/tenant.decorator';
@@ -86,8 +86,9 @@ export class TablesController {
 
   @Roles(Role.ADMIN, Role.CASHIER, Role.WAITER)
   @Put(':id/remove-order')
-  removeOrder(@TenantId() tenantId: string, @Param('id') id: string, @Body() body: { orderIds: string[] }) {
-    return this.tablesService.removeOrder(tenantId, id, body.orderIds);
+  removeOrder(@TenantId() tenantId: string, @Param('id') id: string, @Body() body: { orderIds: string[] }, @Req() req: any) {
+    // El administrador siempre puede; mozos y cajeros solo si el negocio lo habilitó en "Mi negocio"
+    return this.tablesService.removeOrder(tenantId, id, body.orderIds, req.user.role);
   }
 
   @Roles(Role.ADMIN, Role.CASHIER)

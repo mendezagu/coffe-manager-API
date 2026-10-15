@@ -186,9 +186,11 @@ model Tenant {
 
   // Propinas: el negocio decide si las ofrece al cobrar y qué porcentaje sugiere
   // si el cajero puede aplicar descuentos al cobrar (el administrador siempre puede)
-  cashierDiscounts Boolean @default(false)
-  tipEnabled       Boolean @default(false)
-  tipSuggestedPct  Int     @default(10)
+  cashierDiscounts    Boolean @default(false)
+  // si mozos y cajeros pueden eliminar ítems de una orden (el administrador siempre puede)
+  staffCanRemoveItems Boolean @default(false)
+  tipEnabled          Boolean @default(false)
+  tipSuggestedPct     Int     @default(10)
 
   // Caja: si es true, no se puede cobrar sin una caja abierta
   requireOpenRegister Boolean @default(true)

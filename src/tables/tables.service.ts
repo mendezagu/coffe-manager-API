@@ -1,5 +1,5 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { newTablePin } from '../qr/qr.tokens';
 import { mapTable, mapWaiter } from '../common/mappers';
@@ -294,8 +294,15 @@ export class TablesService {
     return mapTable(updatedTable, { populateOrders: true });
   }
 
-  async removeOrder(tenantId: string, id: string, orderIds: string[]) {
+  // role: quién elimina. El administrador siempre puede; un mozo o cajero solo si el negocio lo habilitó.
+  async removeOrder(tenantId: string, id: string, orderIds: string[], role?: Role) {
     await this.requireTable(tenantId, id);
+    if (role && role !== Role.ADMIN) {
+      const tenant = await this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } });
+      if (!tenant.staffCanRemoveItems) {
+        throw new ForbiddenException('Solo el administrador puede eliminar ítems de una orden. Se puede habilitar para mozos y cajeros en "Mi negocio".');
+      }
+    }
 
     await this.prisma.order.deleteMany({
       where: { id: { in: orderIds }, tableId: id },
