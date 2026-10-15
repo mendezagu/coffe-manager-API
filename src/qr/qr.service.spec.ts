@@ -513,6 +513,20 @@ describe('Pedido por QR', () => {
       expect(tokens.every((t) => t.length >= 16)).toBe(true);
     });
 
+    it('con el pedido por QR apagado no se generan ni regeneran códigos', async () => {
+      await prisma.tenant.update({ where: { id: tenantId }, data: { qrEnabled: false } });
+      await expect(qr.generate(tenantId)).rejects.toThrow(/Activá el pedido por QR/);
+      await expect(qr.regenerate(tenantId, table1.id)).rejects.toThrow(ForbiddenException);
+      expect((await prisma.table.findUniqueOrThrow({ where: { id: table1.id } })).qrToken).toBe('token-mesa-1-aaaaaaaaaaaaaaaa');
+    });
+
+    it('una mesa nueva no trae código hasta que se generan', async () => {
+      const created: any = await tables.create(tenantId, { name: 'Mesa nueva' });
+      expect((await prisma.table.findUniqueOrThrow({ where: { id: created._id } })).qrToken).toBeNull();
+      await qr.generate(tenantId);
+      expect((await prisma.table.findUniqueOrThrow({ where: { id: created._id } })).qrToken).toMatch(/^[A-Za-z0-9_-]{24}$/);
+    });
+
     it('un plan sin la función no puede generar ni regenerar', async () => {
       await prisma.tenant.update({ where: { id: tenantId }, data: { plan: 'basic' } });
       await expect(qr.generate(tenantId)).rejects.toThrow(ForbiddenException);

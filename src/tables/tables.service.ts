@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { newQrToken, newTablePin } from '../qr/qr.tokens';
+import { newTablePin } from '../qr/qr.tokens';
 import { mapTable, mapWaiter } from '../common/mappers';
 import { ModifierSnapshot, modifiersKey, resolveModifiers } from '../modifiers/modifiers.logic';
 import {
@@ -57,8 +57,6 @@ export class TablesService {
         tenantId,
         name: createTableDto.name,
         available: createTableDto.available ?? true,
-        qrToken: newQrToken(),
-        qrPin: newTablePin(),
         sectorId: sectorId ?? null,
       },
       include: { sector: true },

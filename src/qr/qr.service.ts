@@ -458,13 +458,13 @@ export class QrService {
 
   // Crea el código de las mesas que todavía no lo tienen (las ya impresas no cambian)
   async generate(tenantId: string) {
-    await this.requirePlan(tenantId);
+    await this.requireActive(tenantId);
     return this.fillMissing(tenantId, { pins: true, tokens: true });
   }
 
   // El QR impreso deja de funcionar y la mesa pasa a tener uno nuevo (por si lo fotografiaron o lo robaron)
   async regenerate(tenantId: string, tableId: string) {
-    await this.requirePlan(tenantId);
+    await this.requireActive(tenantId);
     const { count } = await this.prisma.table.updateMany({
       where: { id: tableId, tenantId },
       data: { qrToken: newQrToken(), qrPin: newTablePin() },
@@ -473,10 +473,14 @@ export class QrService {
     return { ok: true };
   }
 
-  private async requirePlan(tenantId: string) {
+  // Los códigos solo se crean o cambian si el plan lo incluye Y el negocio activó el pedido por QR
+  private async requireActive(tenantId: string) {
     const tenant = await this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } });
     if (!hasFeature(tenant.plan, 'qr_ordering')) {
       throw new ForbiddenException(`Tu plan no incluye "${FEATURE_LABELS.qr_ordering}"`);
+    }
+    if (!tenant.qrEnabled) {
+      throw new ForbiddenException('Activá el pedido por QR en "Mi negocio" para generar los códigos de las mesas');
     }
   }
 
