@@ -147,19 +147,37 @@ describe('TablesService', () => {
     it('mozo y cajero no pueden si el negocio no lo habilitó', async () => {
       const { table, order } = await tableWithLine();
       await expect(service.removeOrder(tenantId, table.id, [order.id], Role.WAITER)).rejects.toThrow(ForbiddenException);
-      await expect(service.removeOrder(tenantId, table.id, [order.id], Role.CASHIER)).rejects.toThrow(/Solo el administrador/);
+      await expect(service.removeOrder(tenantId, table.id, [order.id], Role.CASHIER)).rejects.toThrow(/No tenés permiso/);
       expect(await prisma.order.count({ where: { tableId: table.id } })).toBe(1);
     });
 
-    it('con la opción activada, mozo y cajero pueden', async () => {
-      await prisma.tenant.update({ where: { id: tenantId }, data: { staffCanRemoveItems: true } });
+    it('se puede habilitar solo a los mozos: el cajero sigue sin poder', async () => {
+      await prisma.tenant.update({ where: { id: tenantId }, data: { waiterCanRemoveItems: true } });
       const { table, order } = await tableWithLine();
+      await expect(service.removeOrder(tenantId, table.id, [order.id], Role.CASHIER)).rejects.toThrow(ForbiddenException);
       await service.removeOrder(tenantId, table.id, [order.id], Role.WAITER);
       expect(await prisma.order.count({ where: { tableId: table.id } })).toBe(0);
     });
 
+    it('se puede habilitar solo a los cajeros: el mozo sigue sin poder', async () => {
+      await prisma.tenant.update({ where: { id: tenantId }, data: { cashierCanRemoveItems: true } });
+      const { table, order } = await tableWithLine();
+      await expect(service.removeOrder(tenantId, table.id, [order.id], Role.WAITER)).rejects.toThrow(ForbiddenException);
+      await service.removeOrder(tenantId, table.id, [order.id], Role.CASHIER);
+      expect(await prisma.order.count({ where: { tableId: table.id } })).toBe(0);
+    });
+
+    it('con los dos habilitados, ambos pueden', async () => {
+      await prisma.tenant.update({ where: { id: tenantId }, data: { waiterCanRemoveItems: true, cashierCanRemoveItems: true } });
+      const { table, order } = await tableWithLine();
+      const second = await prisma.order.create({ data: { tableId: table.id, menuItemId: order.menuItemId, quantity: 1, note: 'otro' } });
+      await service.removeOrder(tenantId, table.id, [order.id], Role.WAITER);
+      await service.removeOrder(tenantId, table.id, [second.id], Role.CASHIER);
+      expect(await prisma.order.count({ where: { tableId: table.id } })).toBe(0);
+    });
+
     it('la opción de un negocio no habilita a los de otro', async () => {
-      await prisma.tenant.update({ where: { id: otherTenantId }, data: { staffCanRemoveItems: true } });
+      await prisma.tenant.update({ where: { id: otherTenantId }, data: { waiterCanRemoveItems: true, cashierCanRemoveItems: true } });
       const { table, order } = await tableWithLine();
       await expect(service.removeOrder(tenantId, table.id, [order.id], Role.WAITER)).rejects.toThrow(ForbiddenException);
     });

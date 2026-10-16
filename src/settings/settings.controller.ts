@@ -25,7 +25,8 @@ class UpdateSettingsDto {
   @IsOptional() @IsBoolean() kitchenEnabled?: boolean;
   @IsOptional() @IsBoolean() splitKitchenBar?: boolean;
   @IsOptional() @IsBoolean() cashierDiscounts?: boolean;
-  @IsOptional() @IsBoolean() staffCanRemoveItems?: boolean;
+  @IsOptional() @IsBoolean() waiterCanRemoveItems?: boolean;
+  @IsOptional() @IsBoolean() cashierCanRemoveItems?: boolean;
   @IsOptional() @IsBoolean() tipEnabled?: boolean;
   @IsOptional() @IsInt() @Min(0) @Max(100) tipSuggestedPct?: number;
   @IsOptional() @IsBoolean() requireOpenRegister?: boolean;

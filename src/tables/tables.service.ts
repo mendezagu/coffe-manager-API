@@ -294,13 +294,14 @@ export class TablesService {
     return mapTable(updatedTable, { populateOrders: true });
   }
 
-  // role: quién elimina. El administrador siempre puede; un mozo o cajero solo si el negocio lo habilitó.
+  // role: quién elimina. El administrador siempre puede; el mozo o el cajero solo si el negocio habilitó a ese rol.
   async removeOrder(tenantId: string, id: string, orderIds: string[], role?: Role) {
     await this.requireTable(tenantId, id);
     if (role && role !== Role.ADMIN) {
       const tenant = await this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } });
-      if (!tenant.staffCanRemoveItems) {
-        throw new ForbiddenException('Solo el administrador puede eliminar ítems de una orden. Se puede habilitar para mozos y cajeros en "Mi negocio".');
+      const allowed = (role === Role.WAITER && tenant.waiterCanRemoveItems) || (role === Role.CASHIER && tenant.cashierCanRemoveItems);
+      if (!allowed) {
+        throw new ForbiddenException('No tenés permiso para eliminar ítems de una orden. El administrador puede habilitarlo en "Mi negocio".');
       }
     }
 

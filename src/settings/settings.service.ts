@@ -22,7 +22,8 @@ export interface UpdateSettingsInput {
   kitchenEnabled?: boolean;
   splitKitchenBar?: boolean;
   cashierDiscounts?: boolean;
-  staffCanRemoveItems?: boolean;
+  waiterCanRemoveItems?: boolean;
+  cashierCanRemoveItems?: boolean;
   tipEnabled?: boolean;
   tipSuggestedPct?: number;
   requireOpenRegister?: boolean;
@@ -66,7 +67,8 @@ export function mapSettings(t: Tenant) {
     splitActive: t.kitchenEnabled && t.splitKitchenBar && hasFeature(t.plan, 'kitchen_bar_split'),
     // Propinas y caja
     cashierDiscounts: t.cashierDiscounts,
-    staffCanRemoveItems: t.staffCanRemoveItems,
+    waiterCanRemoveItems: t.waiterCanRemoveItems,
+    cashierCanRemoveItems: t.cashierCanRemoveItems,
     tipEnabled: t.tipEnabled,
     tipSuggestedPct: t.tipSuggestedPct,
     requireOpenRegister: t.requireOpenRegister,
@@ -150,7 +152,8 @@ export class SettingsService {
         kitchenEnabled: input.kitchenEnabled ?? undefined,
         splitKitchenBar: input.splitKitchenBar,
         cashierDiscounts: input.cashierDiscounts ?? undefined,
-        staffCanRemoveItems: input.staffCanRemoveItems ?? undefined,
+        waiterCanRemoveItems: input.waiterCanRemoveItems ?? undefined,
+        cashierCanRemoveItems: input.cashierCanRemoveItems ?? undefined,
         tipEnabled: input.tipEnabled ?? undefined,
         tipSuggestedPct: input.tipSuggestedPct ?? undefined,
         requireOpenRegister: input.requireOpenRegister ?? undefined,
