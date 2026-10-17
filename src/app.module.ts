@@ -18,6 +18,7 @@ import { UsersModule } from './users/users.module';
 import { KitchenModule } from './kitchen/kitchen.module';
 import { SettingsModule } from './settings/settings.module';
 import { QrModule } from './qr/qr.module';
+import { RealtimeModule } from './realtime/realtime.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { QrModule } from './qr/qr.module';
     KitchenModule,
     SettingsModule,
     QrModule,
+    RealtimeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

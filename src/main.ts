@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { json } from 'express';
 import { AppModule } from './app.module';
+import { RealtimeAdapter } from './realtime/realtime.adapter';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
@@ -17,6 +18,9 @@ async function bootstrap() {
   // Sin CORS_ORIGINS se mantiene el comportamiento anterior (abierto) para no romper el desarrollo.
   const origins = process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean);
   app.enableCors(origins?.length ? { origin: origins } : undefined);
+
+  // Tiempo real (Socket.IO) con los mismos orígenes permitidos
+  app.useWebSocketAdapter(new RealtimeAdapter(app, origins));
 
   // Valida los DTOs con class-validator; ignora campos que el DTO no declara.
   app.useGlobalPipes(new ValidationPipe({ whitelist: true }));

@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Prisma, QrOrderRequest, Tenant } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -15,6 +16,7 @@ import { ModifierSnapshot, modifiersTotal, readSnapshot, resolveModifiers, round
 import { availableStock, committedConsumption, loadContext, maxUnits } from '../inventory/inventory.logic';
 import { newQrToken, newTablePin, samePin } from './qr.tokens';
 import { RateLimiter } from './rate-limit';
+import { RealtimeService } from '../realtime/realtime.service';
 
 // ---- límites (pensados para un local con una mesa por QR y clientes que no se conocen) ----
 export const MAX_PENDING_PER_TABLE = 3; // pedidos esperando confirmación en una misma mesa
@@ -55,7 +57,12 @@ function readItems(value: unknown): StoredItem[] {
 
 @Injectable()
 export class QrService {
-  constructor(private readonly prisma: PrismaService, private readonly tables: TablesService) {}
+  // El aviso en tiempo real es opcional: sin él (por ejemplo en las pruebas) todo funciona igual
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tables: TablesService,
+    @Optional() private readonly realtime?: RealtimeService,
+  ) {}
 
   // =====================================================================================
   //  Cliente (sin sesión): todo se identifica por el código secreto del QR de la mesa
@@ -242,6 +249,8 @@ export class QrService {
       }
     }
     const fresh = await this.prisma.qrOrderRequest.findUniqueOrThrow({ where: { id: created.id } });
+    // Avisa al local en el momento (el pedido nuevo, y la mesa y la cocina si entró solo)
+    this.realtime?.notifyTenant(tenant.id, ['qr', 'tables', 'kitchen']);
     return this.clientView(fresh, tenant.kitchenEnabled);
   }
 
@@ -264,12 +273,13 @@ export class QrService {
   }
 
   async cancelRequest(token: string, ip: string, pin: unknown, requestId: string, clientId: string) {
-    const { table } = await this.resolveWithPin(token, ip, pin);
+    const { table, tenant } = await this.resolveWithPin(token, ip, pin);
     const { count } = await this.prisma.qrOrderRequest.updateMany({
       where: { id: requestId, tableId: table.id, clientId, status: 'PENDING' },
       data: { status: 'CANCELLED', resolvedAt: new Date(), resolvedBy: 'cliente' },
     });
     if (count === 0) throw new ConflictException('Ese pedido ya no se puede cancelar');
+    this.realtime?.notifyTenant(tenant.id, ['qr']);
     return { ok: true };
   }
 
@@ -291,7 +301,10 @@ export class QrService {
     }
     // Si ya hay un aviso igual abierto no se duplica
     const open = await this.prisma.serviceCall.findFirst({ where: { tableId: table.id, type, status: 'OPEN' } });
-    if (!open) await this.prisma.serviceCall.create({ data: { tenantId: tenant.id, tableId: table.id, type } });
+    if (!open) {
+      await this.prisma.serviceCall.create({ data: { tenantId: tenant.id, tableId: table.id, type } });
+      this.realtime?.notifyTenant(tenant.id, ['qr']);
+    }
     return { ok: true };
   }
 
