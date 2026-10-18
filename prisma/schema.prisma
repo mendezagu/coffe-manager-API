@@ -222,6 +222,8 @@ model Tenant {
   qrRequests     QrOrderRequest[]
   serviceCalls   ServiceCall[]
   users          User[]
+  hotelPartners  HotelPartner[]
+  hotelVouchers  HotelVoucher[]
 
   @@map("tenants")
 }
@@ -262,9 +264,16 @@ model Sale {
   registerId String?
   register   CashRegister? @relation(fields: [registerId], references: [id], onDelete: SetNull)
 
+  // voucher de hotel canjeado en este cobro (uno por mesa) y hotel del que venía el cliente
+  voucherId String?       @unique
+  voucher   HotelVoucher? @relation(fields: [voucherId], references: [id], onDelete: SetNull)
+  hotelId   String?
+  hotel     Hotel?        @relation(fields: [hotelId], references: [id], onDelete: SetNull)
+
   @@unique([tenantId, checkoutId])
   @@index([tenantId, date])
   @@index([registerId])
+  @@index([hotelId])
   @@map("sales")
 }
 
@@ -608,4 +617,105 @@ model ServiceCall {
   @@index([tenantId, status])
   @@index([tableId, status])
   @@map("service_calls")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Hoteles aliados. Un hotel NO pertenece a un negocio: lo comparten varios restaurantes.
+// Flujo: el huésped escanea el QR del hotel, ve los restaurantes adheridos, elige uno y recibe un
+// voucher (código corto) para ESE restaurante; en el cobro el restaurante lo canjea (uno por mesa).
+// ---------------------------------------------------------------------------------------------
+model Hotel {
+  id               String   @id @default(uuid())
+  name             String
+  // va en la URL pública del hotel (/hotel/:slug)
+  slug             String   @unique
+  // código vigente que el hotel le da a sus huéspedes; se cambia cuando se quiere (ej. cada semana)
+  accessCode       String
+  contact          String   @default("")
+  active           Boolean  @default(true)
+  // días que dura un voucher desde que el huésped lo pide
+  voucherValidDays Int      @default(3)
+  createdAt        DateTime @default(now())
+
+  partners HotelPartner[]
+  vouchers HotelVoucher[]
+  sales    Sale[]
+  users    HotelUser[]
+
+  @@map("hotels")
+}
+
+// Un restaurante adherido a un hotel, con el descuento que ofrece a sus huéspedes
+model HotelPartner {
+  id          String  @id @default(uuid())
+  hotelId     String
+  hotel       Hotel   @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  tenantId    String
+  tenant      Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  discountPct Float
+  active      Boolean @default(true)
+  // condiciones que se muestran al huésped (ej. "De lunes a jueves")
+  conditions  String  @default("")
+
+  @@unique([hotelId, tenantId])
+  @@index([tenantId])
+  @@map("hotel_partners")
+}
+
+enum VoucherStatus {
+  ISSUED
+  REDEEMED
+  CANCELLED
+}
+
+model HotelVoucher {
+  id          String        @id @default(uuid())
+  // código que se muestra y se dicta en el restaurante (sin caracteres que se confunden)
+  code        String        @unique
+  hotelId     String
+  hotel       Hotel         @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  tenantId    String
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  guestName   String
+  // el descuento queda fijo al pedir el voucher, aunque después el restaurante lo cambie
+  discountPct Float
+  status      VoucherStatus @default(ISSUED)
+  validFrom   DateTime      @default(now())
+  validTo     DateTime
+  createdAt   DateTime      @default(now())
+  redeemedAt  DateTime?
+  sale        Sale?
+
+  @@index([hotelId, status])
+  @@index([tenantId, status])
+  @@map("hotel_vouchers")
+}
+
+// Acceso del hotel a su propio portal (cambiar su código, ver cuántos vouchers se usaron).
+// Es una cuenta aparte de User: no pertenece a ningún negocio y su token no sirve en el resto de la API.
+model HotelUser {
+  id           String   @id @default(uuid())
+  hotelId      String
+  hotel        Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  email        String   @unique
+  name         String
+  passwordHash String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([hotelId])
+  @@map("hotel_users")
+}
+
+// Dueño (y equipo) de Tavolapp: cuentas de la consola de plataforma. No pertenecen a ningún negocio ni hotel,
+// y su token no sirve en ninguna otra parte de la API.
+model PlatformUser {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@map("platform_users")
 }

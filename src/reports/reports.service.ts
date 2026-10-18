@@ -105,6 +105,8 @@ export class ReportsService {
     let salesWithoutDetail = 0;
     let tipsTotal = 0;
     const waiterTips = new Map<string, number>();
+    // Ventas con voucher de hotel: cuánto trajo y cuánto se descontó por cada hotel
+    const hotelAgg = new Map<string, { salesCount: number; totalAmount: number; discountTotal: number }>();
 
     for (const sale of sales) {
       totalAmount += sale.totalAmount;
@@ -116,6 +118,13 @@ export class ReportsService {
       // Las ventas viejas sin pagos registrados cuentan con su método único.
       if (sale.payments.length) for (const p of sale.payments) add(byPayment, p.method, p.amount);
       else add(byPayment, sale.paymentMethod || 'sin dato', sale.totalAmount);
+      if (sale.hotelId) {
+        const row = hotelAgg.get(sale.hotelId) ?? { salesCount: 0, totalAmount: 0, discountTotal: 0 };
+        row.salesCount += 1;
+        row.totalAmount += sale.totalAmount;
+        row.discountTotal += sale.discountTotal;
+        hotelAgg.set(sale.hotelId, row);
+      }
       // La propina no es venta: va aparte y es del mozo
       tipsTotal += sale.tipAmount;
       if (sale.tipAmount > 0) {
@@ -145,6 +154,10 @@ export class ReportsService {
         itemsSold += item.quantity;
       }
     }
+
+    const hotelNames = hotelAgg.size
+      ? new Map((await this.prisma.hotel.findMany({ where: { id: { in: [...hotelAgg.keys()] } }, select: { id: true, name: true } })).map((h) => [h.id, h.name]))
+      : new Map<string, string>();
 
     const rank = <T extends { totalAmount: number }>(m: Map<string, T>, label: string) =>
       [...m.entries()]
@@ -181,6 +194,16 @@ export class ReportsService {
         .slice(0, MAX_ITEMS),
       byWaiter: rank(byWaiter, 'name').map((w: any) => ({ ...w, tips: round2(waiterTips.get(w.name) ?? 0) })),
       byPayment: rank(byPayment, 'method'),
+      byHotel: [...hotelAgg.entries()]
+        .map(([hotelId, v]) => ({
+          hotelId,
+          name: hotelNames.get(hotelId) ?? 'Hotel',
+          salesCount: v.salesCount,
+          totalAmount: round2(v.totalAmount),
+          discountTotal: round2(v.discountTotal),
+          averageTicket: round2(v.totalAmount / v.salesCount),
+        }))
+        .sort((a, b) => b.totalAmount - a.totalAmount),
     };
   }
 }

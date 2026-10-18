@@ -19,6 +19,7 @@ import { KitchenModule } from './kitchen/kitchen.module';
 import { SettingsModule } from './settings/settings.module';
 import { QrModule } from './qr/qr.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { HotelsModule } from './hotels/hotels.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { RealtimeModule } from './realtime/realtime.module';
     SettingsModule,
     QrModule,
     RealtimeModule,
+    HotelsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

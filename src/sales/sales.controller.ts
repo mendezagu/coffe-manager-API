@@ -45,6 +45,8 @@ class CheckoutDto {
   // cobrar solo una parte de la mesa (división de cuenta por platos)
   @IsOptional() @IsArray() @ArrayMaxSize(200) @ValidateNested({ each: true }) @Type(() => LineDto) lines?: LineDto[];
   @IsOptional() @IsNumber() @Min(0) @Max(100) globalDiscount?: number;
+  // voucher de hotel (uno por mesa)
+  @IsOptional() @IsString() @MaxLength(20) voucherCode?: string;
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(200)

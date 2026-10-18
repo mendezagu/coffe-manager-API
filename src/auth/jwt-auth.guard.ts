@@ -23,12 +23,15 @@ export class JwtAuthGuard implements CanActivate {
     const [type, token] = (request.headers.authorization ?? '').split(' ');
     if (type !== 'Bearer' || !token) throw new UnauthorizedException('Falta el token');
 
-    let payload: { sub: string };
+    let payload: { sub: string; typ?: string };
     try {
       payload = await this.jwt.verifyAsync(token);
     } catch {
       throw new UnauthorizedException('Token inválido o vencido');
     }
+
+    // El token del portal de hoteles no sirve acá: solo abre las rutas de /api/hotel-portal
+    if (payload.typ) throw new UnauthorizedException('Token inválido');
 
     // Se lee el usuario de la base en cada request: así un cambio de rol o una
     // baja del usuario tiene efecto inmediato, sin esperar a que venza el token.

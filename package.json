@@ -14,6 +14,8 @@
     "start:prod": "node dist/main",
     "run": "npm start",
     "tenant:create": "ts-node scripts/create-tenant.ts",
+    "hotel": "ts-node scripts/hotel.ts",
+    "platform:create": "ts-node scripts/platform-user.ts",
     "migrate:data": "ts-node scripts/migrate-mongo-to-postgres.ts",
     "test": "jest --runInBand"
   },

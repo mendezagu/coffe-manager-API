@@ -8,6 +8,7 @@ import {
 import { Payment, Prisma, Role, Sale, SaleItem } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { newTablePin } from '../qr/qr.tokens';
+import { ValidVoucher, findUsableVoucher, redeemVoucher } from '../hotels/vouchers.logic';
 import { modifiersTotal, readSnapshot } from '../modifiers/modifiers.logic';
 import { StockRequest, consumption, deductForSale, hasRecipe, loadContext, optionIdsOf, unitCost } from '../inventory/inventory.logic';
 
@@ -30,6 +31,8 @@ export interface CheckoutInput {
   items?: { orderId: string; discount: number }[]; // % por línea
   // Cobrar solo una parte de la mesa (división de cuenta por platos). Sin esto se cobra todo.
   lines?: { orderId: string; quantity: number }[];
+  // Voucher de hotel (uno por mesa): fija el descuento general y se gasta con el cobro
+  voucherCode?: string;
 }
 
 export interface Actor {
@@ -56,6 +59,8 @@ export function mapSale(sale: SaleDetail) {
     totalAmount: sale.totalAmount,
     tipAmount: sale.tipAmount,
     registerId: sale.registerId,
+    voucherId: sale.voucherId,
+    hotelId: sale.hotelId,
     date: sale.date,
     ...(sale.payments && {
       payments: sale.payments.map((p) => ({ method: p.method, amount: p.amount, tendered: p.tendered, change: p.change })),
@@ -120,8 +125,8 @@ export class SalesService {
     this.assertRegisterOpen(tenant);
 
     const itemDiscounts = new Map((input.items ?? []).map((i) => [i.orderId, i.discount]));
-    const globalPct = input.globalDiscount ?? 0;
-    const wantsDiscount = globalPct > 0 || [...itemDiscounts.values()].some((d) => d > 0);
+    const manualGlobalPct = input.globalDiscount ?? 0;
+    const wantsDiscount = manualGlobalPct > 0 || [...itemDiscounts.values()].some((d) => d > 0);
     // Descuentos: el administrador siempre; el cajero solo si el negocio lo habilitó en "Mi negocio"
     const mayDiscount = actor.role === Role.ADMIN || (actor.role === Role.CASHIER && tenant.cashierDiscounts);
     if (wantsDiscount && !mayDiscount) {
@@ -131,6 +136,16 @@ export class SalesService {
           : 'Solo un administrador puede aplicar descuentos',
       );
     }
+
+    // Voucher de hotel: el descuento lo fija el voucher, no el cajero, así que no hace falta permiso de
+    // descuentos; a cambio no se acumula con descuentos manuales. Se aplica como el descuento general
+    // (no toca los ítems en promo) y solo se gasta si el cobro se completa.
+    let voucher: ValidVoucher | null = null;
+    if (input.voucherCode) {
+      if (wantsDiscount) throw new BadRequestException('El voucher de hotel no se acumula con otros descuentos');
+      voucher = await findUsableVoucher(this.prisma, tenantId, input.voucherCode);
+    }
+    const globalPct = voucher ? voucher.discountPct : manualGlobalPct;
 
     const table = await this.prisma.table.findFirst({
       where: { id: tableId, tenantId },
@@ -200,6 +215,10 @@ export class SalesService {
           modifiers: readSnapshot(order.modifiers) as unknown as Prisma.InputJsonValue,
         };
       });
+    // No se quema un voucher que no descuenta nada (todo lo cobrado es promo)
+    if (voucher && discountable === 0) {
+      throw new BadRequestException('El voucher no aplica: lo que se cobra son solo ítems en promo');
+    }
     const globalDiscountAmount = round2((discountable * globalPct) / 100);
     const totalAmount = round2(lineSum - globalDiscountAmount);
     const grossTotal = round2(gross);
@@ -216,6 +235,9 @@ export class SalesService {
         // La caja se vuelve a mirar adentro de la transacción: pudo cerrarse mientras se armaba el cobro.
         const fresh = await tx.tenant.findUniqueOrThrow({ where: { id: tenantId } });
         this.assertRegisterOpen(fresh);
+
+        // Primero se gasta el voucher: si otro cobro ya lo usó, todo este cobro se revierte
+        if (voucher) await redeemVoucher(tx, voucher.id, tenantId);
 
         const created = await tx.sale.create({
           data: {
@@ -234,6 +256,8 @@ export class SalesService {
             // (las órdenes vienen de la más vieja a la más nueva)
             tableOpenedAt: isFull ? table.openedAt ?? table.orders[0]?.createdAt ?? null : null,
             registerId: fresh.openRegisterId,
+            voucherId: voucher?.id ?? null,
+            hotelId: voucher?.hotelId ?? null,
             items: { create: lines },
             payments: { create: payments },
           },
