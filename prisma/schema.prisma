@@ -669,25 +669,31 @@ enum VoucherStatus {
 }
 
 model HotelVoucher {
-  id          String        @id @default(uuid())
+  id           String        @id @default(uuid())
   // código que se muestra y se dicta en el restaurante (sin caracteres que se confunden)
-  code        String        @unique
-  hotelId     String
-  hotel       Hotel         @relation(fields: [hotelId], references: [id], onDelete: Cascade)
-  tenantId    String
-  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  guestName   String
+  code         String        @unique
+  hotelId      String
+  hotel        Hotel         @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  tenantId     String
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  guestName    String
   // el descuento queda fijo al pedir el voucher, aunque después el restaurante lo cambie
-  discountPct Float
-  status      VoucherStatus @default(ISSUED)
-  validFrom   DateTime      @default(now())
-  validTo     DateTime
-  createdAt   DateTime      @default(now())
-  redeemedAt  DateTime?
-  sale        Sale?
+  discountPct  Float
+  status       VoucherStatus @default(ISSUED)
+  validFrom    DateTime      @default(now())
+  validTo      DateTime
+  createdAt    DateTime      @default(now())
+  redeemedAt   DateTime?
+  // Documento del huésped (DNI o pasaporte). No se guarda el número: solo una huella cifrada con una clave del
+  // servidor (sirve para reconocer al mismo huésped) y los últimos 3 caracteres (para que el cajero lo compruebe).
+  // Los vouchers anteriores a este dato quedan en null y siguen funcionando.
+  guestDocHash String?
+  guestDocHint String?
+  sale         Sale?
 
   @@index([hotelId, status])
   @@index([tenantId, status])
+  @@index([hotelId, guestDocHash])
   @@map("hotel_vouchers")
 }
 

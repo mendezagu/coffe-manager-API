@@ -19,10 +19,31 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export class PlatformTenantsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Restaurantes con lo que cada uno declaró en "Mi negocio" y el email de su administrador.
+  // Solo datos de contacto y fiscales: nunca contraseñas, códigos de QR ni nada interno del negocio.
   async list() {
     const tenants = await this.prisma.tenant.findMany({
       orderBy: { name: 'asc' },
-      select: { id: true, name: true, plan: true, createdAt: true, _count: { select: { users: true, hotelPartners: true } } },
+      select: {
+        id: true,
+        name: true,
+        plan: true,
+        createdAt: true,
+        legalName: true,
+        taxIdLabel: true,
+        taxId: true,
+        address: true,
+        city: true,
+        postalCode: true,
+        phone: true,
+        ticketFooter: true,
+        currencyCode: true,
+        locale: true,
+        // El logo puede ser una imagen embebida y pesada: acá solo se indica si lo cargó
+        logoUrl: true,
+        users: { where: { role: Role.ADMIN }, orderBy: { createdAt: 'asc' }, select: { name: true, email: true, active: true } },
+        _count: { select: { users: true, hotelPartners: true } },
+      },
     });
     return tenants.map((t) => ({
       id: t.id,
@@ -31,6 +52,20 @@ export class PlatformTenantsService {
       createdAt: t.createdAt,
       users: t._count.users,
       hotels: t._count.hotelPartners,
+      business: {
+        legalName: t.legalName,
+        taxIdLabel: t.taxIdLabel,
+        taxId: t.taxId,
+        address: t.address,
+        city: t.city,
+        postalCode: t.postalCode,
+        phone: t.phone,
+        ticketFooter: t.ticketFooter,
+        currencyCode: t.currencyCode,
+        locale: t.locale,
+        hasLogo: !!t.logoUrl,
+      },
+      admins: t.users.map((u) => ({ name: u.name, email: u.email, active: u.active })),
     }));
   }
 

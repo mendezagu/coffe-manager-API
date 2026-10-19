@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, NotFoundExc
 import { PrismaClient, Role, VoucherStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { Actor, SalesService } from '../sales/sales.service';
-import { HotelsService, MAX_ACTIVE_VOUCHERS_PER_GUEST } from './hotels.service';
+import { HotelsService, MAX_ACTIVE_VOUCHERS_PER_GUEST, VOUCHER_COOLDOWN_MS } from './hotels.service';
 import { normalizeCode } from './vouchers.logic';
 
 // Corre contra una base Postgres real y separada (coffee_manager_test).
@@ -44,8 +44,17 @@ describe('Hoteles aliados: vouchers y descuento en el cobro', () => {
     await prisma.hotelPartner.create({ data: { hotelId, tenantId, discountPct: 10 } });
   });
 
-  const ask = (overrides: Partial<{ tenantId: string; guestName: string; accessCode: string }> = {}) =>
-    hotels.issueVoucher('alpes', { tenantId, guestName: 'Lucía Pérez', accessCode: 'ALPES-OCT', ...overrides });
+  const ask = (overrides: Partial<{ tenantId: string; guestName: string; document: string; accessCode: string }> = {}, now?: Date) =>
+    hotels.issueVoucher('alpes', { tenantId, guestName: 'Lucía Pérez', document: '30123456', accessCode: 'ALPES-OCT', ...overrides }, now);
+
+  // Suma otro restaurante adherido al hotel
+  const addPartner = async (name: string) => {
+    const t = await prisma.tenant.create({ data: { name, requireOpenRegister: false } });
+    await prisma.hotelPartner.create({ data: { hotelId, tenantId: t.id, discountPct: 5 } });
+    return t.id;
+  };
+  const redeem = (code: string, at = new Date()) =>
+    prisma.hotelVoucher.update({ where: { code }, data: { status: VoucherStatus.REDEEMED, redeemedAt: at } });
 
   let n = 0;
   const id = () => `checkout-${++n}-${Math.random().toString(36).slice(2)}`;
@@ -94,11 +103,124 @@ describe('Hoteles aliados: vouchers y descuento en el cobro', () => {
       expect((await hotels.publicInfo('alpes')).restaurants).toEqual([]);
     });
 
-    it('un huésped no acumula más de 3 vouchers sin usar', async () => {
-      for (let i = 0; i < MAX_ACTIVE_VOUCHERS_PER_GUEST; i++) await ask();
+    it('un huésped no acumula más de 3 vouchers sin usar entre todos los restaurantes', async () => {
+      const others: string[] = [];
+      for (let i = 0; i < MAX_ACTIVE_VOUCHERS_PER_GUEST - 1; i++) others.push(await addPartner(`Extra ${i}`));
+      await ask();
+      for (const tid of others) await ask({ tenantId: tid });
+      const fourth = await addPartner('Cuarto');
 
-      await expect(ask({ guestName: 'lucía pérez' })).rejects.toThrow(BadRequestException);
-      await expect(ask({ guestName: 'Otra Persona' })).resolves.toBeDefined();
+      await expect(ask({ tenantId: fourth })).rejects.toThrow(BadRequestException);
+      // otra persona (otro documento) sí puede
+      await expect(ask({ tenantId: fourth, guestName: 'Otra Persona', document: '40111222' })).resolves.toBeDefined();
+    });
+
+    it('cambiar el nombre no sirve para saltear el tope: se reconoce al huésped por su documento', async () => {
+      const others = [await addPartner('Extra 1'), await addPartner('Extra 2'), await addPartner('Extra 3')];
+      await ask();
+      await ask({ tenantId: others[0] });
+      await ask({ tenantId: others[1] });
+
+      await expect(ask({ tenantId: others[2], guestName: 'Lucía Pérez Otro' })).rejects.toThrow(BadRequestException);
+    });
+
+    it('pedir otro voucher al mismo restaurante devuelve el que ya tiene vigente (no crea otro)', async () => {
+      const first = await ask();
+      const again = await ask();
+
+      expect(again.code).toBe(first.code);
+      expect(again.reused).toBe(true);
+      expect(first.reused).toBe(false);
+      expect(await prisma.hotelVoucher.count()).toBe(1);
+    });
+
+    it('el documento da igual con puntos o espacios, y el nombre sin importar mayúsculas ni tildes', async () => {
+      const first = await ask();
+      const again = await ask({ document: '30.123.456', guestName: 'lucia  PEREZ' });
+
+      expect(again.code).toBe(first.code);
+    });
+
+    it('con el documento de otro huésped no se obtiene su voucher: tiene que coincidir el nombre', async () => {
+      await ask();
+
+      await expect(ask({ guestName: 'Alguien Más' })).rejects.toThrow(/otra persona/);
+      expect(await prisma.hotelVoucher.count()).toBe(1);
+    });
+
+    it('pedidos simultáneos del mismo huésped terminan en un solo voucher', async () => {
+      const results = await Promise.all([ask(), ask(), ask(), ask(), ask()]);
+
+      expect(new Set(results.map((r) => r.code)).size).toBe(1);
+      expect(await prisma.hotelVoucher.count()).toBe(1);
+    });
+
+    it('pide nombre y apellido, y un DNI o pasaporte válido', async () => {
+      await expect(ask({ guestName: 'Lucía' })).rejects.toThrow(/nombre y apellido/);
+      await expect(ask({ document: '123' })).rejects.toThrow(/DNI o pasaporte/);
+      await expect(ask({ document: '' })).rejects.toThrow(BadRequestException);
+      await expect(ask({ document: 'AB-1234567' })).resolves.toBeDefined(); // pasaporte
+      expect(await prisma.hotelVoucher.count()).toBe(1);
+    });
+
+    it('no se guarda el número de documento: solo una huella cifrada y los últimos 3 caracteres', async () => {
+      const v = await ask({ document: '30.123.456' });
+
+      const row = await prisma.hotelVoucher.findUniqueOrThrow({ where: { code: v.code } });
+      expect(row.guestDocHint).toBe('456');
+      expect(row.guestDocHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(JSON.stringify(row)).not.toContain('30123456');
+      // el cajero ve cómo termina el documento
+      expect((await hotels.validate(tenantId, v.code)).documentHint).toBe('456');
+    });
+
+    describe('después de usar un voucher en un restaurante', () => {
+      const now = new Date('2026-11-02T12:00:00Z');
+      const HOUR = 60 * 60 * 1000;
+
+      it('no puede pedir otro en ese restaurante hasta pasadas 24 horas', async () => {
+        const v = await ask({}, now);
+        await redeem(v.code, now);
+
+        await expect(ask({}, new Date(now.getTime() + 1 * HOUR))).rejects.toThrow(/Ya usaste tu voucher en Pizzería\. Podés pedir otro en 23 horas/);
+        await expect(ask({}, new Date(now.getTime() + 23.5 * HOUR))).rejects.toThrow(/en menos de 1 hora/);
+        expect(await prisma.hotelVoucher.count()).toBe(1);
+      });
+
+      it('pasadas las 24 horas puede pedir uno nuevo', async () => {
+        const v = await ask({}, now);
+        await redeem(v.code, now);
+
+        const next = await ask({}, new Date(now.getTime() + VOUCHER_COOLDOWN_MS + 60_000));
+
+        expect(next.code).not.toBe(v.code);
+        expect(next.reused).toBe(false);
+      });
+
+      it('la espera es solo en ese restaurante: en otro del hotel puede pedir enseguida', async () => {
+        const other = await addPartner('Parrilla Aliada');
+        const v = await ask({}, now);
+        await redeem(v.code, now);
+
+        await expect(ask({ tenantId: other }, new Date(now.getTime() + HOUR))).resolves.toBeDefined();
+      });
+
+      it('la espera es de esa persona: otro huésped puede pedir en ese restaurante', async () => {
+        const v = await ask({}, now);
+        await redeem(v.code, now);
+
+        await expect(ask({ guestName: 'Otra Persona', document: '40111222' }, new Date(now.getTime() + HOUR))).resolves.toBeDefined();
+      });
+
+      it('un voucher que venció sin usarse o que el hotel anuló no genera espera', async () => {
+        const v = await ask({}, now);
+        await prisma.hotelVoucher.update({ where: { code: v.code }, data: { validTo: new Date(now.getTime() + HOUR) } });
+        const afterExpiry = await ask({}, new Date(now.getTime() + 2 * HOUR));
+        expect(afterExpiry.code).not.toBe(v.code);
+
+        await prisma.hotelVoucher.update({ where: { code: afterExpiry.code }, data: { status: VoucherStatus.CANCELLED } });
+        await expect(ask({}, new Date(now.getTime() + 3 * HOUR))).resolves.toBeDefined();
+      });
     });
 
     it('la pantalla pública del hotel lista sus restaurantes con el descuento', async () => {
@@ -107,6 +229,86 @@ describe('Hoteles aliados: vouchers y descuento en el cobro', () => {
       expect(info.name).toBe('Hotel Alpes');
       expect(info.restaurants).toEqual([expect.objectContaining({ id: tenantId, name: 'Pizzería', discountPct: 10 })]);
       await expect(hotels.publicInfo('no-existe')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('estado de los vouchers que ya tiene el celular', () => {
+    const now = new Date('2026-11-03T12:00:00Z');
+    const HOUR = 60 * 60 * 1000;
+    const statuses = (codes: string[], at = new Date(now.getTime() + HOUR)) => hotels.voucherStatuses('alpes', codes, at);
+
+    it('dice si cada voucher está vigente, canjeado, anulado o vencido, con su restaurante y descuento', async () => {
+      const other = await addPartner('Parrilla Aliada');
+      const third = await addPartner('Cafetería');
+      const fourth = await addPartner('Heladería');
+      const vigente = await ask({}, now);
+      const canjeado = await ask({ tenantId: other }, now);
+      await redeem(canjeado.code, now);
+      const anulado = await ask({ tenantId: third }, now);
+      await prisma.hotelVoucher.update({ where: { code: anulado.code }, data: { status: VoucherStatus.CANCELLED } });
+      const vencido = await ask({ tenantId: fourth }, now);
+      await prisma.hotelVoucher.update({ where: { code: vencido.code }, data: { validTo: new Date(now.getTime() - HOUR) } });
+
+      const res = await statuses([vigente.code, canjeado.code, anulado.code, vencido.code]);
+      const byCode = Object.fromEntries(res.map((r) => [r.code, r]));
+
+      expect(res).toHaveLength(4);
+      expect(byCode[vigente.code]).toEqual(expect.objectContaining({ status: 'ISSUED', restaurantName: 'Pizzería', discountPct: 10, restaurantId: tenantId }));
+      expect(byCode[canjeado.code]).toEqual(expect.objectContaining({ status: 'REDEEMED', restaurantName: 'Parrilla Aliada' }));
+      expect(byCode[canjeado.code].redeemedAt).toEqual(now);
+      expect(byCode[anulado.code].status).toBe('CANCELLED');
+      expect(byCode[vencido.code].status).toBe('EXPIRED');
+    });
+
+    it('un voucher vigente pasa a vencido al llegar su fecha, sin que nadie lo toque', async () => {
+      const v = await ask({}, now);
+
+      expect((await statuses([v.code], new Date(now.getTime() + HOUR)))[0].status).toBe('ISSUED');
+      expect((await statuses([v.code], new Date(v.validTo.getTime() + 1000)))[0].status).toBe('EXPIRED');
+    });
+
+    it('trae las condiciones de la alianza', async () => {
+      await prisma.hotelPartner.updateMany({ data: { conditions: 'Lunes a jueves' } });
+      const v = await ask({}, now);
+
+      expect((await statuses([v.code]))[0].conditions).toBe('Lunes a jueves');
+    });
+
+    it('acepta códigos en minúsculas o con guiones, y no repite resultados', async () => {
+      const v = await ask({}, now);
+      const spaced = v.code.slice(0, 3) + '-' + v.code.slice(3);
+
+      const res = await statuses([v.code.toLowerCase(), spaced, v.code]);
+
+      expect(res).toHaveLength(1);
+      expect(res[0].code).toBe(v.code);
+    });
+
+    it('no devuelve vouchers de otro hotel ni códigos que no existen', async () => {
+      const mar = await prisma.hotel.create({ data: { name: 'Hotel Mar', slug: 'mar', accessCode: 'MAR-OCT' } });
+      await prisma.hotelPartner.create({ data: { hotelId: mar.id, tenantId, discountPct: 5 } });
+      const ajeno = await hotels.issueVoucher('mar', { tenantId, guestName: 'Pedro Soto', document: '30222333', accessCode: 'MAR-OCT' });
+
+      expect(await statuses([ajeno.code, 'ZZZZZZ'])).toEqual([]);
+      expect(await statuses([])).toEqual([]);
+    });
+
+    it('nunca incluye datos del huésped (nombre, documento ni su huella)', async () => {
+      const v = await ask({}, now);
+
+      const text = JSON.stringify(await statuses([v.code]));
+
+      expect(text).not.toContain('Lucía');
+      expect(text).not.toContain('Pérez');
+      expect(text).not.toContain('30123456');
+      expect(text).not.toMatch(/[0-9a-f]{64}/);
+      expect(text).not.toContain('guestName');
+    });
+
+    it('un hotel que no existe o está dado de baja responde que no se encontró', async () => {
+      await expect(hotels.voucherStatuses('no-existe', ['ABC234'])).rejects.toThrow(NotFoundException);
+      await prisma.hotel.update({ where: { id: hotelId }, data: { active: false } });
+      await expect(statuses(['ABC234'])).rejects.toThrow(NotFoundException);
     });
   });
 

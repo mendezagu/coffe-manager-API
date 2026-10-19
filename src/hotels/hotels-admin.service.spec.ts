@@ -72,12 +72,12 @@ describe('Hoteles: administración, alianzas y reporte', () => {
   it('cambiar el código del hotel corta el acceso al código viejo pero no a los vouchers ya emitidos', async () => {
     const hotel = await admin.createHotel({ name: 'A', slug: 'a', accessCode: 'VIEJO' });
     await admin.setPartner(hotel.id, { tenantId, discountPct: 10 });
-    const voucher = await hotels.issueVoucher('a', { tenantId, guestName: 'Lucía', accessCode: 'VIEJO' });
+    const voucher = await hotels.issueVoucher('a', { tenantId, guestName: 'Lucía Pérez', document: '30123456', accessCode: 'VIEJO' });
 
     await admin.updateHotel(hotel.id, { accessCode: 'NUEVO' });
 
-    await expect(hotels.issueVoucher('a', { tenantId, guestName: 'Pedro', accessCode: 'VIEJO' })).rejects.toThrow();
-    await expect(hotels.issueVoucher('a', { tenantId, guestName: 'Pedro', accessCode: 'NUEVO' })).resolves.toBeDefined();
+    await expect(hotels.issueVoucher('a', { tenantId, guestName: 'Pedro Soto', document: '30222333', accessCode: 'VIEJO' })).rejects.toThrow();
+    await expect(hotels.issueVoucher('a', { tenantId, guestName: 'Pedro Soto', document: '30222333', accessCode: 'NUEVO' })).resolves.toBeDefined();
     await expect(hotels.validate(tenantId, voucher.code)).resolves.toBeDefined();
   });
 
@@ -111,8 +111,8 @@ describe('Hoteles: administración, alianzas y reporte', () => {
         voucherCode: code,
       });
     };
-    const v1 = await hotels.issueVoucher('a', { tenantId, guestName: 'Ana', accessCode: 'X' });
-    const v2 = await hotels.issueVoucher('a', { tenantId, guestName: 'Beto', accessCode: 'X' });
+    const v1 = await hotels.issueVoucher('a', { tenantId, guestName: 'Ana Gómez', document: '30000001', accessCode: 'X' });
+    const v2 = await hotels.issueVoucher('a', { tenantId, guestName: 'Beto Ruiz', document: '30000002', accessCode: 'X' });
     await sell(v1.code);
     await sell(v2.code);
     await sell(); // venta común: no cuenta para el hotel

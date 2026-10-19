@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { Role } from '@prisma/client';
-import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { Public } from '../auth/public.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { TenantId } from '../auth/tenant.decorator';
@@ -21,7 +21,14 @@ const SLUG = /^[a-z0-9-]{1,60}$/;
 class IssueVoucherDto {
   @IsString() @Matches(/^[\w-]{1,64}$/) restaurantId: string;
   @IsString() @MinLength(2) @MaxLength(60) guestName: string;
+  // DNI o pasaporte: con o sin puntos y espacios (el servidor lo normaliza y lo valida)
+  @IsString() @MinLength(5) @MaxLength(25) document: string;
   @IsString() @MinLength(1) @MaxLength(40) accessCode: string;
+}
+
+class VoucherStatusDto {
+  // Los códigos que ya tiene el celular del huésped (de 6 caracteres; se aceptan con espacios o guiones)
+  @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) @Matches(/^[A-Za-z0-9 -]{4,12}$/, { each: true }) codes: string[];
 }
 
 class ValidateVoucherDto {
@@ -32,6 +39,8 @@ const ipOf = (req: any): string => String(req.ip ?? req.socket?.remoteAddress ??
 
 // Frena a quien prueba códigos de hotel o llena de vouchers: por conexión y por hotel
 const issueLimiter = new RateLimiter(10, 10 * 60 * 1000);
+// Consultar el estado de vouchers: también limitado, para que no sirva para probar códigos al azar
+const statusLimiter = new RateLimiter(20, 10 * 60 * 1000);
 
 // ---------------------------------------------------------------------------------------------
 // Pantalla del huésped. Sin sesión: el acceso lo da el código vigente que el hotel le entrega.
@@ -53,8 +62,17 @@ export class HotelsPublicController {
     return this.hotels.issueVoucher(clean, {
       tenantId: dto.restaurantId,
       guestName: dto.guestName,
+      document: dto.document,
       accessCode: dto.accessCode,
     });
+  }
+
+  // Estado (vigente, canjeado, vencido o anulado) de los vouchers que el huésped ya tiene en su celular
+  @Post(':slug/vouchers/status')
+  statuses(@Param('slug') slug: string, @Body() dto: VoucherStatusDto, @Req() req: any) {
+    const clean = this.slugOf(slug);
+    statusLimiter.hit(`${ipOf(req)}:${clean}`, 'Demasiadas consultas, esperá unos minutos');
+    return this.hotels.voucherStatuses(clean, dto.codes);
   }
 
   private slugOf(slug: string) {

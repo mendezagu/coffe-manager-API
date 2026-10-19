@@ -126,21 +126,21 @@ describe('Portal del hotel y alta de restaurantes', () => {
     it('el hotel cambia su código: el nuevo sirve y el viejo no', async () => {
       await portal.setAccessCode(hotelId, ' ALPES-NOV ');
 
-      await expect(hotels.issueVoucher('alpes', { tenantId, guestName: 'Lucía', accessCode: 'ALPES-OCT' })).rejects.toThrow();
-      await expect(hotels.issueVoucher('alpes', { tenantId, guestName: 'Lucía', accessCode: 'alpes nov' })).resolves.toBeDefined();
+      await expect(hotels.issueVoucher('alpes', { tenantId, guestName: 'Lucía Pérez', document: '30123456', accessCode: 'ALPES-OCT' })).rejects.toThrow();
+      await expect(hotels.issueVoucher('alpes', { tenantId, guestName: 'Lucía Pérez', document: '30123456', accessCode: 'alpes nov' })).resolves.toBeDefined();
       await expect(portal.setAccessCode(hotelId, 'ab')).rejects.toThrow(BadRequestException);
     });
 
     it('el resumen cuenta emitidos, canjeados, anulados y vencidos, solo de SU hotel', async () => {
-      const ask = (name: string) => hotels.issueVoucher('alpes', { tenantId, guestName: name, accessCode: 'ALPES-OCT' });
-      const used = await ask('Ana');
-      await ask('Beto');
-      const cancelled = await ask('Carla');
-      const old = await ask('Dani');
+      const ask = (name: string, document: string) => hotels.issueVoucher('alpes', { tenantId, guestName: name, document, accessCode: 'ALPES-OCT' });
+      const used = await ask('Ana Gómez', '30000001');
+      await ask('Beto Ruiz', '30000002');
+      const cancelled = await ask('Carla Díaz', '30000003');
+      const old = await ask('Dani López', '30000004');
       await prisma.hotelVoucher.update({ where: { code: used.code }, data: { status: VoucherStatus.REDEEMED, redeemedAt: new Date() } });
       await prisma.hotelVoucher.update({ where: { code: cancelled.code }, data: { status: VoucherStatus.CANCELLED } });
       await prisma.hotelVoucher.update({ where: { code: old.code }, data: { validTo: new Date(Date.now() - 1000) } });
-      await hotels.issueVoucher('mar', { tenantId, guestName: 'Otro', accessCode: 'MAR-OCT' }); // de otro hotel
+      await hotels.issueVoucher('mar', { tenantId, guestName: 'Otro Huésped', document: '30000005', accessCode: 'MAR-OCT' }); // de otro hotel
 
       const s = await portal.summary(hotelId);
 
@@ -148,15 +148,15 @@ describe('Portal del hotel y alta de restaurantes', () => {
       expect(s.totals).toEqual({ issued: 4, redeemed: 1, cancelled: 1, expired: 1 });
       expect(s.byRestaurant).toEqual([{ name: 'Pizzería', issued: 4, redeemed: 1 }]);
       expect(s.recent).toHaveLength(4);
-      expect(s.recent.map((v) => v.guestName)).not.toContain('Otro');
-      expect(s.recent.find((v) => v.guestName === 'Dani')?.status).toBe('EXPIRED');
+      expect(s.recent.map((v) => v.guestName)).not.toContain('Otro Huésped');
+      expect(s.recent.find((v) => v.guestName === 'Dani López')?.status).toBe('EXPIRED');
       // el hotel no ve los códigos de los vouchers
       expect(JSON.stringify(s.recent)).not.toContain(used.code);
     });
 
     it('el hotel anula un voucher sin usar, pero no uno ya usado ni uno de otro hotel', async () => {
-      const mine = await hotels.issueVoucher('alpes', { tenantId, guestName: 'Ana', accessCode: 'ALPES-OCT' });
-      const theirs = await hotels.issueVoucher('mar', { tenantId, guestName: 'Beto', accessCode: 'MAR-OCT' });
+      const mine = await hotels.issueVoucher('alpes', { tenantId, guestName: 'Ana Gómez', document: '30000001', accessCode: 'ALPES-OCT' });
+      const theirs = await hotels.issueVoucher('mar', { tenantId, guestName: 'Beto Ruiz', document: '30000002', accessCode: 'MAR-OCT' });
       const idOf = async (code: string) => (await prisma.hotelVoucher.findUniqueOrThrow({ where: { code } })).id;
 
       await expect(portal.cancelVoucher(hotelId, await idOf(theirs.code))).rejects.toThrow(NotFoundException);
