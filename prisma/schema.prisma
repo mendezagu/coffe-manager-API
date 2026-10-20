@@ -137,6 +137,8 @@ model User {
   role         Role
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
+  // La contraseña la puso otra persona (por ejemplo, el alta desde la consola): tiene que cambiarla antes de usar la app
+  mustChangePassword Boolean @default(false)
 
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)

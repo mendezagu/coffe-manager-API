@@ -89,6 +89,8 @@ export class PlatformTenantsService {
             name: input.adminName?.trim() || 'Administrador',
             role: Role.ADMIN,
             passwordHash: await bcrypt.hash(input.password, 10),
+            // la contraseña la puso la consola: el dueño la cambia en su primer ingreso
+            mustChangePassword: true,
           },
         },
       },
