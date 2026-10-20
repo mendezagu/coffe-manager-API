@@ -20,6 +20,7 @@ import { SettingsModule } from './settings/settings.module';
 import { QrModule } from './qr/qr.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { HotelsModule } from './hotels/hotels.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { HotelsModule } from './hotels/hotels.module';
     QrModule,
     RealtimeModule,
     HotelsModule,
+    OnboardingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -40,6 +40,8 @@ model MenuItem {
   price    Float
   quantity Int     @default(1)
   isPromo  Boolean @default(false)
+  // true = viene de la plantilla de ejemplo y todavía no se tocó
+  isExample Boolean @default(false)
   orders   Order[]
 
   // opcional: un plato sin categoría se trata como de cocina
@@ -206,6 +208,8 @@ model Tenant {
   qrEnabled      Boolean @default(false)
   qrAutoConfirm  Boolean @default(false)
   qrRequirePin   Boolean @default(false)
+  // Asistente de primeros pasos: false hasta que el dueño lo termina o lo saltea (los negocios que ya existían arrancan en true)
+  onboardingDone Boolean @default(false)
   // Caja abierta en este momento (una por negocio). Es única: así dos aperturas simultáneas no pueden coexistir.
   openRegisterId String? @unique
 
@@ -318,6 +322,8 @@ model Category {
   name        String
   position    Int         @default(0)
   destination Destination @default(KITCHEN)
+  // true = viene de la plantilla de ejemplo y todavía no se tocó
+  isExample   Boolean     @default(false)
 
   menuItems MenuItem[]
 

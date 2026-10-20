@@ -61,6 +61,8 @@ export class MenuService {
             // undefined = Prisma no toca la columna (ediciones parciales)
             isPromo: updateMenuItemDto.isPromo,
             categoryId,
+            // si lo editó, deja de ser un plato de ejemplo
+            isExample: false,
           },
         });
         if (groupIds) {

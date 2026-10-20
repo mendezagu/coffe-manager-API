@@ -35,6 +35,7 @@ class UpdateSettingsDto {
   @IsOptional() @IsBoolean() qrEnabled?: boolean;
   @IsOptional() @IsBoolean() qrAutoConfirm?: boolean;
   @IsOptional() @IsBoolean() qrRequirePin?: boolean;
+  @IsOptional() @IsBoolean() onboardingDone?: boolean;
 }
 
 @Controller('api/settings')

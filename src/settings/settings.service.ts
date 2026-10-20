@@ -32,6 +32,7 @@ export interface UpdateSettingsInput {
   qrEnabled?: boolean;
   qrAutoConfirm?: boolean;
   qrRequirePin?: boolean;
+  onboardingDone?: boolean;
 }
 
 // Logo: una imagen chica embebida (data URL) o un archivo propio de la app (assets/...).
@@ -81,6 +82,7 @@ export function mapSettings(t: Tenant) {
     qrActive: t.qrEnabled && hasFeature(t.plan, 'qr_ordering'),
     qrAutoConfirm: t.qrAutoConfirm,
     qrRequirePin: t.qrRequirePin,
+    onboardingDone: t.onboardingDone,
   };
 }
 
@@ -162,6 +164,7 @@ export class SettingsService {
         qrEnabled: input.qrEnabled ?? undefined,
         qrAutoConfirm: input.qrAutoConfirm ?? undefined,
         qrRequirePin: input.qrRequirePin ?? undefined,
+        onboardingDone: input.onboardingDone ?? undefined,
       },
     });
     return mapSettings(tenant);
