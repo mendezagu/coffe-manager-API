@@ -21,6 +21,7 @@ import { QrModule } from './qr/qr.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { HotelsModule } from './hotels/hotels.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
+import { ReservationsModule } from './reservations/reservations.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { OnboardingModule } from './onboarding/onboarding.module';
     RealtimeModule,
     HotelsModule,
     OnboardingModule,
+    ReservationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

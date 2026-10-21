@@ -72,6 +72,11 @@ export class ReportsService {
       throw new BadRequestException(`El rango máximo es de ${MAX_DAYS} días`);
     }
 
+    const commissionSettings = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { commissionEnabled: true, commissionPct: true },
+    });
+
     const sales = await this.prisma.sale.findMany({
       where: { tenantId, date: { gte: startOfDay(from, tz), lt: startOfDay(addDays(to, 1), tz) } },
       include: { items: true, payments: true },
@@ -105,6 +110,9 @@ export class ReportsService {
     let salesWithoutDetail = 0;
     let tipsTotal = 0;
     const waiterTips = new Map<string, number>();
+    // Comisión de cada mozo: lo vendido por el porcentaje que regía en cada venta
+    const waiterCommission = new Map<string, number>();
+    let commissionTotal = 0;
     // Ventas con voucher de hotel: cuánto trajo y cuánto se descontó por cada hotel
     const hotelAgg = new Map<string, { salesCount: number; totalAmount: number; discountTotal: number }>();
 
@@ -124,6 +132,12 @@ export class ReportsService {
         row.totalAmount += sale.totalAmount;
         row.discountTotal += sale.discountTotal;
         hotelAgg.set(sale.hotelId, row);
+      }
+      if (sale.commissionPct > 0) {
+        const commission = (sale.totalAmount * sale.commissionPct) / 100;
+        const who = sale.waiterName || 'Sin mozo';
+        waiterCommission.set(who, (waiterCommission.get(who) ?? 0) + commission);
+        commissionTotal += commission;
       }
       // La propina no es venta: va aparte y es del mozo
       tipsTotal += sale.tipAmount;
@@ -166,6 +180,8 @@ export class ReportsService {
 
     return {
       range: { from, to, tz },
+      // cómo está configurada hoy la comisión (para mostrar u ocultar esa parte de la pantalla)
+      commission: { enabled: commissionSettings?.commissionEnabled ?? false, pct: commissionSettings?.commissionPct ?? 0 },
       summary: {
         salesCount: sales.length,
         totalAmount: round2(totalAmount),
@@ -175,6 +191,7 @@ export class ReportsService {
         itemsSold,
         salesWithoutDetail,
         tipsTotal: round2(tipsTotal),
+        commissionTotal: round2(commissionTotal),
         // costo y ganancia de lo vendido con receta; revenueWithoutCost = lo vendido sin costo conocido
         costTotal: round2(costTotal),
         profit: round2(knownRevenue - costTotal),
@@ -192,7 +209,11 @@ export class ReportsService {
         }))
         .sort((a, b) => b.amount - a.amount)
         .slice(0, MAX_ITEMS),
-      byWaiter: rank(byWaiter, 'name').map((w: any) => ({ ...w, tips: round2(waiterTips.get(w.name) ?? 0) })),
+      byWaiter: rank(byWaiter, 'name').map((w: any) => ({
+        ...w,
+        tips: round2(waiterTips.get(w.name) ?? 0),
+        commission: round2(waiterCommission.get(w.name) ?? 0),
+      })),
       byPayment: rank(byPayment, 'method'),
       byHotel: [...hotelAgg.entries()]
         .map(([hotelId, v]) => ({

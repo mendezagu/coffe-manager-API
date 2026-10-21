@@ -32,7 +32,7 @@ describe('Cobro: pagos mixtos, propinas, cobro por partes y caja', () => {
     await prisma.$disconnect();
   });
 
-  async function setup(tenant: { requireOpenRegister?: boolean; tipEnabled?: boolean } = {}) {
+  async function setup(tenant: { requireOpenRegister?: boolean; tipEnabled?: boolean; commissionEnabled?: boolean; commissionPct?: number } = {}) {
     await prisma.tenant.deleteMany({});
     tenantId = (await prisma.tenant.create({ data: { name: 'A', requireOpenRegister: false, ...tenant } })).id;
   }
@@ -123,6 +123,42 @@ describe('Cobro: pagos mixtos, propinas, cobro por partes y caja', () => {
       const { table } = await tableSetup();
 
       await expect(sales.checkout(tenantId, cashier, table.id, { checkoutId: id() })).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('comisión de mozos', () => {
+    it('con la comisión activa, la venta guarda el porcentaje vigente (y no cambia si después se ajusta)', async () => {
+      await setup({ commissionEnabled: true, commissionPct: 8 });
+      const { table, cafeOrder } = await tableSetup(); // $5500
+
+      const pctOf = async (checkoutId: string) =>
+        (await prisma.sale.findFirstOrThrow({ where: { tenantId, checkoutId } })).commissionPct;
+
+      // cobro parcial: solo el café (3 × $1000)
+      const firstId = id();
+      await sales.checkout(tenantId, cashier, table.id, {
+        checkoutId: firstId,
+        paymentMethod: 'efectivo',
+        lines: [{ orderId: cafeOrder.id, quantity: 3 }],
+      } as any);
+      expect(await pctOf(firstId)).toBe(8);
+
+      await prisma.tenant.update({ where: { id: tenantId }, data: { commissionPct: 12 } });
+      const secondId = id();
+      await sales.checkout(tenantId, cashier, table.id, { checkoutId: secondId, paymentMethod: 'efectivo' });
+      expect(await pctOf(secondId)).toBe(12);
+
+      // la primera venta conserva el 8 %
+      expect(await pctOf(firstId)).toBe(8);
+    });
+
+    it('con la comisión apagada, la venta no lleva comisión aunque haya quedado un porcentaje guardado', async () => {
+      await setup({ commissionEnabled: false, commissionPct: 8 });
+      const { table } = await tableSetup();
+      const checkoutId = id();
+      await sales.checkout(tenantId, cashier, table.id, { checkoutId, paymentMethod: 'efectivo' });
+      const stored = await prisma.sale.findFirstOrThrow({ where: { tenantId, checkoutId } });
+      expect(stored.commissionPct).toBe(0);
     });
   });
 

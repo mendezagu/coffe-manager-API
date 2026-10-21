@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { Public } from '../auth/public.decorator';
@@ -26,6 +26,30 @@ class IssueVoucherDto {
   @IsString() @MinLength(1) @MaxLength(40) accessCode: string;
 }
 
+class HotelReserveDto {
+  @IsString() @Matches(/^[\w-]{1,64}$/) restaurantId: string;
+  @IsString() @MinLength(1) @MaxLength(40) accessCode: string;
+  @IsString() @Matches(/^\d{4}-\d{2}-\d{2}$/) date: string;
+  @IsString() @Matches(/^\d{2}:\d{2}$/) time: string;
+  @IsInt() @Min(1) @Max(100) partySize: number;
+  @IsString() @MinLength(2) @MaxLength(60) guestName: string;
+  @IsString() @MinLength(6) @MaxLength(25) guestPhone: string;
+  @IsOptional() @IsString() @MaxLength(300) notes?: string;
+  @IsOptional() @IsBoolean() wantVoucher?: boolean;
+  @IsOptional() @IsString() @MaxLength(25) document?: string;
+}
+
+class HotelWaitlistDto {
+  @IsString() @Matches(/^[\w-]{1,64}$/) restaurantId: string;
+  @IsString() @MinLength(1) @MaxLength(40) accessCode: string;
+  @IsString() @Matches(/^\d{4}-\d{2}-\d{2}$/) date: string;
+  @IsString() @Matches(/^\d{2}:\d{2}$/) fromTime: string;
+  @IsString() @Matches(/^\d{2}:\d{2}$/) toTime: string;
+  @IsInt() @Min(1) @Max(100) partySize: number;
+  @IsString() @MinLength(2) @MaxLength(60) guestName: string;
+  @IsString() @MinLength(6) @MaxLength(25) guestPhone: string;
+}
+
 class VoucherStatusDto {
   // Los códigos que ya tiene el celular del huésped (de 6 caracteres; se aceptan con espacios o guiones)
   @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) @Matches(/^[A-Za-z0-9 -]{4,12}$/, { each: true }) codes: string[];
@@ -41,6 +65,9 @@ const ipOf = (req: any): string => String(req.ip ?? req.socket?.remoteAddress ??
 const issueLimiter = new RateLimiter(10, 10 * 60 * 1000);
 // Consultar el estado de vouchers: también limitado, para que no sirva para probar códigos al azar
 const statusLimiter = new RateLimiter(20, 10 * 60 * 1000);
+// Reservas desde el hotel: por conexión y por hotel, para que no se use para llenar un restaurante de reservas
+const reserveLimiter = new RateLimiter(8, 10 * 60 * 1000);
+const availabilityLimiter = new RateLimiter(60, 10 * 60 * 1000);
 
 // ---------------------------------------------------------------------------------------------
 // Pantalla del huésped. Sin sesión: el acceso lo da el código vigente que el hotel le entrega.
@@ -65,6 +92,46 @@ export class HotelsPublicController {
       document: dto.document,
       accessCode: dto.accessCode,
     });
+  }
+
+  // Horarios con lugar para reservar en un restaurante adherido
+  @Get(':slug/reservations/availability')
+  reservationAvailability(
+    @Param('slug') slug: string,
+    @Query('restaurantId') restaurantId: string,
+    @Query('date') date: string,
+    @Query('party') party: string,
+    @Req() req: any,
+  ) {
+    const clean = this.slugOf(slug);
+    availabilityLimiter.hit(`${ipOf(req)}:${clean}`, 'Demasiadas consultas, esperá unos minutos');
+    return this.hotels.reservationAvailability(clean, String(restaurantId ?? ''), String(date ?? ''), Number(party));
+  }
+
+  // Reservar mesa (con o sin voucher)
+  @Post(':slug/reservations')
+  reserve(@Param('slug') slug: string, @Body() dto: HotelReserveDto, @Req() req: any) {
+    const clean = this.slugOf(slug);
+    reserveLimiter.hit(`${ipOf(req)}:${clean}`, 'Demasiados intentos, esperá unos minutos');
+    return this.hotels.reserve(clean, {
+      tenantId: dto.restaurantId,
+      accessCode: dto.accessCode,
+      date: dto.date,
+      time: dto.time,
+      partySize: dto.partySize,
+      guestName: dto.guestName,
+      guestPhone: dto.guestPhone,
+      notes: dto.notes,
+      wantVoucher: dto.wantVoucher,
+      document: dto.document,
+    });
+  }
+
+  @Post(':slug/reservations/waitlist')
+  reserveWaitlist(@Param('slug') slug: string, @Body() dto: HotelWaitlistDto, @Req() req: any) {
+    const clean = this.slugOf(slug);
+    reserveLimiter.hit(`${ipOf(req)}:${clean}`, 'Demasiados intentos, esperá unos minutos');
+    return this.hotels.reserveWaitlist(clean, { ...dto, tenantId: dto.restaurantId });
   }
 
   // Estado (vigente, canjeado, vencido o anulado) de los vouchers que el huésped ya tiene en su celular

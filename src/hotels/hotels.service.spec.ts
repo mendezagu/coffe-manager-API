@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, NotFoundExc
 import { PrismaClient, Role, VoucherStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { Actor, SalesService } from '../sales/sales.service';
+import { ReservationsService } from '../reservations/reservations.service';
 import { HotelsService, MAX_ACTIVE_VOUCHERS_PER_GUEST, VOUCHER_COOLDOWN_MS } from './hotels.service';
 import { normalizeCode } from './vouchers.logic';
 
@@ -27,7 +28,7 @@ describe('Hoteles aliados: vouchers y descuento en el cobro', () => {
   beforeAll(async () => {
     prisma = new PrismaClient({ datasources: { db: { url: TEST_DATABASE_URL } } }) as PrismaService;
     await prisma.$connect();
-    hotels = new HotelsService(prisma);
+    hotels = new HotelsService(prisma, new ReservationsService(prisma));
     sales = new SalesService(prisma);
   });
 

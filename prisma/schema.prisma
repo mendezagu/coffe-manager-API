@@ -95,6 +95,8 @@ model Table {
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
+  reservations Reservation[]
+
   @@map("tables")
 }
 
@@ -197,6 +199,27 @@ model Tenant {
   tipEnabled            Boolean @default(false)
   tipSuggestedPct       Int     @default(10)
 
+  // Comisión para los mozos por las mesas que atendieron: el administrador la habilita y fija el porcentaje.
+  // Se calcula sobre lo vendido (sin propina). Cada venta guarda el porcentaje vigente al cobrar.
+  commissionEnabled     Boolean @default(false)
+  commissionPct         Float   @default(0)
+
+  // Zona horaria del local: las reservas se guardan en hora local del negocio (día + minutos desde la medianoche)
+  timezone String @default("America/Argentina/Buenos_Aires")
+
+  // Reservas: el negocio las habilita y define sus reglas. La página pública es /reservar/<reservationSlug>.
+  reservationsEnabled    Boolean @default(false)
+  reservationSlug        String? @unique
+  reservationOpenMin     Int     @default(720) // primer horario reservable (minutos desde la medianoche; 720 = 12:00)
+  reservationCloseMin    Int     @default(1380) // último horario reservable (1380 = 23:00)
+  reservationDays        Int[]   @default([0, 1, 2, 3, 4, 5, 6]) // días de la semana en que se reserva (0 = domingo)
+  reservationSlotMin     Int     @default(30) // cada cuántos minutos hay un horario para elegir
+  reservationDurationMin Int     @default(90) // cuánto tiempo ocupa una mesa una reserva
+  reservationCapacity    Int     @default(30) // personas sentadas a la vez como máximo
+  reservationMaxParty    Int     @default(10) // personas máximas por reserva
+  reservationAdvanceDays Int     @default(30) // con cuántos días de anticipación se puede reservar
+  reservationNoticeMin   Int     @default(60) // anticipación mínima, en minutos
+
   // Caja: si es true, no se puede cobrar sin una caja abierta
   requireOpenRegister Boolean @default(true)
 
@@ -230,6 +253,8 @@ model Tenant {
   users          User[]
   hotelPartners  HotelPartner[]
   hotelVouchers  HotelVoucher[]
+  reservations   Reservation[]
+  waitlist       WaitlistEntry[]
 
   @@map("tenants")
 }
@@ -259,6 +284,8 @@ model Sale {
   totalAmount       Float // lo que se vendió (sin propina)
   // propina: se cobra junto con la cuenta pero NO es venta (no suma a la facturación) y es del mozo
   tipAmount         Float @default(0)
+  // porcentaje de comisión del mozo que regía al cobrar (0 si el negocio no la tenía activada); no cambia si después se ajusta
+  commissionPct     Float @default(0)
 
   date          DateTime   @default(now())
   // cuándo se pidió lo primero en la mesa; solo en el cobro que la libera (sirve para la permanencia promedio)
@@ -649,6 +676,7 @@ model Hotel {
   vouchers HotelVoucher[]
   sales    Sale[]
   users    HotelUser[]
+  reservations Reservation[]
 
   @@map("hotels")
 }
@@ -698,11 +726,99 @@ model HotelVoucher {
   guestDocHash String?
   guestDocHint String?
   sale         Sale?
+  reservation  Reservation?
 
   @@index([hotelId, status])
   @@index([tenantId, status])
   @@index([hotelId, guestDocHash])
   @@map("hotel_vouchers")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Reservas de mesa. La fecha y la hora van en hora LOCAL del negocio (día "YYYY-MM-DD" + minutos desde la
+// medianoche): así no dependen de la zona horaria de quien reserva ni de la del servidor.
+// ---------------------------------------------------------------------------------------------
+enum ReservationStatus {
+  PENDING // esperando que el local la confirme (si no confirma sola)
+  CONFIRMED
+  ARRIVED // el cliente llegó
+  NO_SHOW // no vino
+  CANCELLED
+}
+
+enum ReservationSource {
+  WEB // desde la página pública del restaurante
+  MANUAL // la cargó el personal (teléfono, WhatsApp, en persona)
+  HOTEL // la hizo un huésped desde la pantalla de su hotel
+}
+
+model Reservation {
+  id String @id @default(uuid())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  date      String // YYYY-MM-DD, hora local del negocio
+  startMin  Int // minutos desde la medianoche local
+  partySize Int
+
+  guestName  String
+  guestPhone String // solo dígitos
+  guestEmail String @default("")
+  notes      String @default("")
+
+  status ReservationStatus @default(CONFIRMED)
+  source ReservationSource @default(WEB)
+  // código corto que ve el cliente (sirve para cancelar su reserva junto con su teléfono)
+  code   String
+
+  // mesa asignada al recibirlo (opcional)
+  tableId String?
+  table   Table?  @relation(fields: [tableId], references: [id], onDelete: SetNull)
+
+  // reserva hecha por un huésped: de qué hotel viene y el voucher que sacó junto con la reserva (si lo pidió)
+  hotelId   String?
+  hotel     Hotel?        @relation(fields: [hotelId], references: [id], onDelete: SetNull)
+  voucherId String?       @unique
+  voucher   HotelVoucher? @relation(fields: [voucherId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  cancelledAt DateTime?
+
+  @@unique([tenantId, code])
+  @@index([tenantId, date])
+  @@index([tenantId, guestPhone])
+  @@map("reservations")
+}
+
+enum WaitlistStatus {
+  WAITING
+  CONTACTED // el local ya le avisó que hay lugar
+  BOOKED // terminó en una reserva
+  CANCELLED
+}
+
+// Alguien que quiere ir un día en un rango de horas y no había lugar: queda anotado para avisarle si se libera.
+model WaitlistEntry {
+  id String @id @default(uuid())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  date       String // YYYY-MM-DD
+  fromMin    Int // rango de horas en el que le sirve ir
+  toMin      Int
+  partySize  Int
+  guestName  String
+  guestPhone String
+
+  status    WaitlistStatus @default(WAITING)
+  hotelId   String?
+  createdAt DateTime       @default(now())
+
+  @@index([tenantId, date, status])
+  @@map("waitlist_entries")
 }
 
 // Acceso del hotel a su propio portal (cambiar su código, ver cuántos vouchers se usaron).

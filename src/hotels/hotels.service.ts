@@ -1,7 +1,9 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, VoucherStatus } from '@prisma/client';
+import { Prisma, ReservationSource, VoucherStatus } from '@prisma/client';
 import { timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { timeToMin } from '../reservations/reservations.logic';
+import { ReservationsService } from '../reservations/reservations.service';
 import {
   documentHash,
   documentHint,
@@ -41,6 +43,20 @@ export interface VoucherStatusView {
 // Cuántos códigos se pueden consultar de una vez
 export const MAX_STATUS_CODES = 20;
 
+export interface HotelReserveInput {
+  tenantId: string;
+  accessCode: string;
+  date: string;
+  time: string;
+  partySize: number;
+  guestName: string;
+  guestPhone: string;
+  notes?: string;
+  // El huésped puede pedir también su voucher al reservar (es opcional): ahí hacen falta nombre y apellido y documento
+  wantVoucher?: boolean;
+  document?: string;
+}
+
 export interface IssueVoucherInput {
   tenantId: string;
   guestName: string; // nombre y apellido
@@ -50,7 +66,7 @@ export interface IssueVoucherInput {
 
 @Injectable()
 export class HotelsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly reservations: ReservationsService) {}
 
   // Pantalla pública del hotel: sus datos y los restaurantes adheridos con su descuento.
   async publicInfo(slug: string) {
@@ -72,8 +88,91 @@ export class HotelsService {
         logoUrl: p.tenant.logoUrl,
         discountPct: p.discountPct,
         conditions: p.conditions,
+        // si el restaurante recibe reservas, la pantalla del hotel ofrece "Reservar mesa"
+        reservable: p.tenant.reservationsEnabled,
+        maxParty: p.tenant.reservationMaxParty,
       })),
     };
+  }
+
+  // Horarios con lugar de un restaurante adherido (no es un dato sensible: no pide el código del hotel)
+  async reservationAvailability(slug: string, tenantId: string, day: string, partySize: number, now = new Date()) {
+    const { tenant } = await this.reservablePartner(slug, tenantId);
+    return this.reservations.availabilityFor(tenant, day, partySize, now);
+  }
+
+  /**
+   * El huésped reserva mesa en un restaurante adherido. Es independiente del voucher: puede reservar sin pedirlo,
+   * o pedirlo en el mismo paso (casilla "Quiero también mi descuento"). La prueba de que está alojado sigue siendo
+   * el código del hotel, igual que para el voucher, así que no se puede usar esta pantalla para llenar de reservas.
+   */
+  async reserve(slug: string, input: HotelReserveInput, now = new Date()) {
+    const hotel = await this.findActiveHotel(slug);
+    if (!sameCode(hotel.accessCode, input.accessCode)) {
+      throw new ForbiddenException('El código del hotel no es correcto. Pedilo en recepción.');
+    }
+    const { tenant } = await this.reservablePartner(slug, input.tenantId);
+    const startMin = timeToMin(input.time);
+    if (startMin === null) throw new BadRequestException('El horario no es válido');
+
+    // El voucher se pide primero: si algo de sus reglas no se cumple (documento, tope, 24 h), no se reserva a medias.
+    // Si después no hay lugar, el voucher queda vigente y al volver a pedirlo se le devuelve el mismo.
+    let voucher: Awaited<ReturnType<HotelsService['issueVoucher']>> | null = null;
+    let voucherId: string | null = null;
+    if (input.wantVoucher) {
+      voucher = await this.issueVoucher(slug, {
+        tenantId: input.tenantId,
+        guestName: input.guestName,
+        document: input.document ?? '',
+        accessCode: input.accessCode,
+      }, now);
+      const row = await this.prisma.hotelVoucher.findUnique({ where: { code: voucher.code }, select: { id: true } });
+      // un voucher se asocia a una sola reserva: si ya está en otra, esta reserva va sin vincular
+      const taken = row ? await this.prisma.reservation.findUnique({ where: { voucherId: row.id }, select: { id: true } }) : null;
+      voucherId = row && !taken ? row.id : null;
+    }
+
+    const reservation = await this.reservations.book(
+      tenant,
+      {
+        date: input.date,
+        startMin,
+        partySize: input.partySize,
+        guestName: input.guestName,
+        guestPhone: input.guestPhone,
+        notes: input.notes,
+        source: ReservationSource.HOTEL,
+        hotelId: hotel.id,
+        voucherId,
+      },
+      { enforceRules: true, enforceCapacity: true, now },
+    );
+    return { reservation: this.reservations.confirmationOf(tenant, reservation), voucher };
+  }
+
+  // Sin lugar: el huésped se anota en la lista de espera del restaurante
+  async reserveWaitlist(
+    slug: string,
+    input: { tenantId: string; accessCode: string; date: string; fromTime: string; toTime: string; partySize: number; guestName: string; guestPhone: string },
+    now = new Date(),
+  ) {
+    const hotel = await this.findActiveHotel(slug);
+    if (!sameCode(hotel.accessCode, input.accessCode)) {
+      throw new ForbiddenException('El código del hotel no es correcto. Pedilo en recepción.');
+    }
+    const { tenant } = await this.reservablePartner(slug, input.tenantId);
+    return this.reservations.joinWaitlist(tenant, { ...input, hotelId: hotel.id }, now);
+  }
+
+  private async reservablePartner(slug: string, tenantId: string) {
+    const hotel = await this.findActiveHotel(slug);
+    const partner = await this.prisma.hotelPartner.findFirst({
+      where: { hotelId: hotel.id, tenantId, active: true },
+      include: { tenant: true },
+    });
+    if (!partner) throw new NotFoundException('Ese restaurante no está adherido a este hotel');
+    if (!partner.tenant.reservationsEnabled) throw new NotFoundException('Este restaurante no recibe reservas por acá');
+    return { hotel, tenant: partner.tenant };
   }
 
   /**

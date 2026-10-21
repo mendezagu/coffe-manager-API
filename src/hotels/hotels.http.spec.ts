@@ -6,6 +6,7 @@ import { Test } from '@nestjs/testing';
 import { PrismaClient } from '@prisma/client';
 import { PrismaModule } from '../prisma/prisma.module';
 import { HotelsPublicController } from './hotels.controller';
+import { ReservationsService } from '../reservations/reservations.service';
 import { HotelsService } from './hotels.service';
 
 // Prueba por HTTP la pantalla pública del huésped (validación de lo que manda), contra la base de pruebas.
@@ -39,7 +40,7 @@ describe('Hoteles · pedir un voucher por HTTP', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [PrismaModule],
       controllers: [HotelsPublicController],
-      providers: [HotelsService],
+      providers: [HotelsService, ReservationsService],
     }).compile();
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(new ValidationPipe({ whitelist: true }));

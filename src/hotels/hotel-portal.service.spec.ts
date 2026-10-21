@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { HotelUserGuard } from './hotel-auth.guard';
 import { HotelPortalService } from './hotel-portal.service';
 import { HotelsAdminService } from './hotels-admin.service';
+import { ReservationsService } from '../reservations/reservations.service';
 import { HotelsService } from './hotels.service';
 import { PlatformAuthService, PlatformUserGuard } from './platform-auth';
 import { PlatformTenantsService } from './platform-tenants.service';
@@ -57,7 +58,7 @@ describe('Portal del hotel y alta de restaurantes', () => {
     jwt = new FakeJwt();
     portal = new HotelPortalService(prisma, jwt as unknown as JwtService);
     admin = new HotelsAdminService(prisma);
-    hotels = new HotelsService(prisma);
+    hotels = new HotelsService(prisma, new ReservationsService(prisma));
     tenants = new PlatformTenantsService(prisma);
     platformAuth = new PlatformAuthService(prisma, jwt as unknown as JwtService);
   });

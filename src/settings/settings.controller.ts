@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Put } from '@nestjs/common';
 import { Role } from '@prisma/client';
-import { IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { Roles } from '../auth/roles.decorator';
 import { TenantId } from '../auth/tenant.decorator';
 import { SettingsService } from './settings.service';
@@ -29,6 +29,18 @@ class UpdateSettingsDto {
   @IsOptional() @IsBoolean() cashierCanRemoveItems?: boolean;
   @IsOptional() @IsBoolean() tipEnabled?: boolean;
   @IsOptional() @IsInt() @Min(0) @Max(100) tipSuggestedPct?: number;
+  @IsOptional() @IsBoolean() commissionEnabled?: boolean;
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100) commissionPct?: number;
+  @IsOptional() @IsBoolean() reservationsEnabled?: boolean;
+  @IsOptional() @IsInt() @Min(0) @Max(1439) reservationOpenMin?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(1439) reservationCloseMin?: number;
+  @IsOptional() @IsArray() @ArrayMaxSize(7) @IsInt({ each: true }) @Min(0, { each: true }) @Max(6, { each: true }) reservationDays?: number[];
+  @IsOptional() @IsInt() @Min(5) @Max(120) reservationSlotMin?: number;
+  @IsOptional() @IsInt() @Min(15) @Max(600) reservationDurationMin?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(1000) reservationCapacity?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(1000) reservationMaxParty?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(365) reservationAdvanceDays?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(1440) reservationNoticeMin?: number;
   @IsOptional() @IsBoolean() requireOpenRegister?: boolean;
   @IsOptional() @IsBoolean() inventoryEnabled?: boolean;
   @IsOptional() @IsBoolean() blockOutOfStock?: boolean;

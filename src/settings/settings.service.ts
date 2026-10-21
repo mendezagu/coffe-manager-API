@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { Tenant } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { FEATURE_LABELS, featuresOf, hasFeature } from '../plans/plans';
+import { slugify, validateRules } from '../reservations/reservations.logic';
 
 export interface UpdateSettingsInput {
   name?: string;
@@ -26,6 +27,18 @@ export interface UpdateSettingsInput {
   cashierCanRemoveItems?: boolean;
   tipEnabled?: boolean;
   tipSuggestedPct?: number;
+  commissionEnabled?: boolean;
+  commissionPct?: number;
+  reservationsEnabled?: boolean;
+  reservationOpenMin?: number;
+  reservationCloseMin?: number;
+  reservationDays?: number[];
+  reservationSlotMin?: number;
+  reservationDurationMin?: number;
+  reservationCapacity?: number;
+  reservationMaxParty?: number;
+  reservationAdvanceDays?: number;
+  reservationNoticeMin?: number;
   requireOpenRegister?: boolean;
   inventoryEnabled?: boolean;
   blockOutOfStock?: boolean;
@@ -72,6 +85,21 @@ export function mapSettings(t: Tenant) {
     cashierCanRemoveItems: t.cashierCanRemoveItems,
     tipEnabled: t.tipEnabled,
     tipSuggestedPct: t.tipSuggestedPct,
+    // Comisión de mozos
+    commissionEnabled: t.commissionEnabled,
+    commissionPct: t.commissionPct,
+    // Reservas
+    reservationsEnabled: t.reservationsEnabled,
+    reservationSlug: t.reservationSlug,
+    reservationOpenMin: t.reservationOpenMin,
+    reservationCloseMin: t.reservationCloseMin,
+    reservationDays: t.reservationDays ?? [],
+    reservationSlotMin: t.reservationSlotMin,
+    reservationDurationMin: t.reservationDurationMin,
+    reservationCapacity: t.reservationCapacity,
+    reservationMaxParty: t.reservationMaxParty,
+    reservationAdvanceDays: t.reservationAdvanceDays,
+    reservationNoticeMin: t.reservationNoticeMin,
     requireOpenRegister: t.requireOpenRegister,
     // Inventario: lo que el negocio eligió y lo que realmente rige (elegido Y permitido por el plan)
     inventoryEnabled: t.inventoryEnabled,
@@ -123,6 +151,36 @@ export class SettingsService {
       throw new ForbiddenException(`Tu plan no incluye "${FEATURE_LABELS.qr_ordering}"`);
     }
 
+    // Con la comisión activa hace falta un porcentaje real (entre 0 y 100, sin pasarse de dos decimales)
+    const commissionOn = input.commissionEnabled ?? current.commissionEnabled;
+    const commissionPct = input.commissionPct ?? current.commissionPct;
+    if (commissionOn && !(commissionPct > 0 && commissionPct <= 100)) {
+      throw new BadRequestException('Poné un porcentaje de comisión mayor a 0 y hasta 100');
+    }
+
+    // Reservas: las reglas tienen que tener sentido (se valida con lo nuevo mezclado con lo que ya había)
+    const rules = {
+      openMin: input.reservationOpenMin ?? current.reservationOpenMin,
+      closeMin: input.reservationCloseMin ?? current.reservationCloseMin,
+      days: input.reservationDays ?? current.reservationDays,
+      slotMin: input.reservationSlotMin ?? current.reservationSlotMin,
+      durationMin: input.reservationDurationMin ?? current.reservationDurationMin,
+      capacity: input.reservationCapacity ?? current.reservationCapacity,
+      maxParty: input.reservationMaxParty ?? current.reservationMaxParty,
+      advanceDays: input.reservationAdvanceDays ?? current.reservationAdvanceDays,
+      noticeMin: input.reservationNoticeMin ?? current.reservationNoticeMin,
+    };
+    const touchesReservations = Object.keys(input).some((k) => k.startsWith('reservation'));
+    if (touchesReservations) {
+      const problem = validateRules(rules);
+      if (problem) throw new BadRequestException(problem);
+    }
+    // La primera vez que se activan se le arma la dirección pública (/reservar/<nombre>)
+    let reservationSlug: string | undefined;
+    if ((input.reservationsEnabled ?? current.reservationsEnabled) && !current.reservationSlug) {
+      reservationSlug = await this.freeReservationSlug(input.name?.trim() || current.name);
+    }
+
     const morning = input.shiftMorningStart ?? current.shiftMorningStart;
     const afternoon = input.shiftAfternoonStart ?? current.shiftAfternoonStart;
     const night = input.shiftNightStart ?? current.shiftNightStart;
@@ -158,6 +216,19 @@ export class SettingsService {
         cashierCanRemoveItems: input.cashierCanRemoveItems ?? undefined,
         tipEnabled: input.tipEnabled ?? undefined,
         tipSuggestedPct: input.tipSuggestedPct ?? undefined,
+        commissionEnabled: input.commissionEnabled ?? undefined,
+        commissionPct: input.commissionPct === undefined ? undefined : Math.round(input.commissionPct * 100) / 100,
+        reservationsEnabled: input.reservationsEnabled ?? undefined,
+        reservationSlug,
+        reservationOpenMin: input.reservationOpenMin,
+        reservationCloseMin: input.reservationCloseMin,
+        reservationDays: input.reservationDays === undefined ? undefined : [...new Set(input.reservationDays)].sort(),
+        reservationSlotMin: input.reservationSlotMin,
+        reservationDurationMin: input.reservationDurationMin,
+        reservationCapacity: input.reservationCapacity,
+        reservationMaxParty: input.reservationMaxParty,
+        reservationAdvanceDays: input.reservationAdvanceDays,
+        reservationNoticeMin: input.reservationNoticeMin,
         requireOpenRegister: input.requireOpenRegister ?? undefined,
         inventoryEnabled: input.inventoryEnabled ?? undefined,
         blockOutOfStock: input.blockOutOfStock ?? undefined,
@@ -168,6 +239,16 @@ export class SettingsService {
       },
     });
     return mapSettings(tenant);
+  }
+
+  // Dirección pública para reservar: el nombre del negocio y, si ya existe, un sufijo para que sea única
+  private async freeReservationSlug(name: string): Promise<string> {
+    const base = slugify(name);
+    for (let i = 0; i < 20; i++) {
+      const candidate = i === 0 ? base : `${base}-${Math.random().toString(36).slice(2, 6)}`;
+      if (!(await this.prisma.tenant.findUnique({ where: { reservationSlug: candidate } }))) return candidate;
+    }
+    return `${base}-${Date.now().toString(36)}`;
   }
 
   // undefined = no tocar, null/'' = quitar el logo

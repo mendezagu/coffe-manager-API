@@ -252,6 +252,8 @@ export class SalesService {
             globalDiscountPct: globalPct,
             totalAmount,
             tipAmount,
+            // comisión del mozo: el porcentaje de hoy queda guardado en la venta (si se ajusta después, no cambia lo ya cobrado)
+            commissionPct: tenant.commissionEnabled ? tenant.commissionPct : 0,
             // hora en que se abrió la mesa; en mesas abiertas antes de registrarla, la de su orden más vieja
             // (las órdenes vienen de la más vieja a la más nueva)
             tableOpenedAt: isFull ? table.openedAt ?? table.orders[0]?.createdAt ?? null : null,

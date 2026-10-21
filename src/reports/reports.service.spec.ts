@@ -65,6 +65,7 @@ describe('ReportsService', () => {
       payment?: string;
       globalPct?: number;
       tip?: number;
+      commissionPct?: number;
       payments?: { method: string; amount: number }[];
       items?: { name: string; unitPrice: number; quantity: number; lineTotal: number; isPromo?: boolean }[];
       tenant?: string;
@@ -81,6 +82,7 @@ describe('ReportsService', () => {
         totalAmount: opts.total,
         globalDiscountPct: opts.globalPct ?? 0,
         tipAmount: opts.tip ?? 0,
+        commissionPct: opts.commissionPct ?? 0,
         payments: { create: opts.payments ?? [] },
         date: new Date(date),
         items: { create: opts.items ?? [] },
@@ -151,8 +153,8 @@ describe('ReportsService', () => {
     const r = await service.sales(tenantId, { from: '2026-10-10', to: '2026-10-10', tz: BA });
 
     expect(r.byWaiter).toEqual([
-      { name: 'Beto', salesCount: 1, totalAmount: 4000, tips: 0 },
-      { name: 'Ana', salesCount: 2, totalAmount: 1500, tips: 0 },
+      { name: 'Beto', salesCount: 1, totalAmount: 4000, tips: 0, commission: 0 },
+      { name: 'Ana', salesCount: 2, totalAmount: 1500, tips: 0, commission: 0 },
     ]);
     expect(r.byPayment).toEqual([
       { method: 'efectivo', salesCount: 2, totalAmount: 4500 },
@@ -187,6 +189,26 @@ describe('ReportsService', () => {
     expect(r.summary.tipsTotal).toBe(800);
     expect(r.byWaiter.find((w) => w.name === 'Ana')?.tips).toBe(800);
     expect(r.byWaiter.find((w) => w.name === 'Beto')?.tips).toBe(0);
+  });
+
+  it('la comisión de cada mozo es lo vendido por el porcentaje que regía en cada venta', async () => {
+    await sale('2026-10-10T15:00:00Z', { total: 5000, waiter: 'Ana', commissionPct: 10 });
+    await sale('2026-10-10T16:00:00Z', { total: 3000, waiter: 'Ana', commissionPct: 5 }); // el porcentaje se ajustó después
+    await sale('2026-10-10T17:00:00Z', { total: 2000, waiter: 'Beto', commissionPct: 5 });
+    await sale('2026-10-10T18:00:00Z', { total: 1000, waiter: 'Beto' }); // antes de activar la comisión: no suma
+
+    const r = await service.sales(tenantId, { from: '2026-10-10', to: '2026-10-10', tz: BA });
+
+    expect(r.byWaiter.find((w) => w.name === 'Ana')?.commission).toBe(650); // 500 + 150
+    expect(r.byWaiter.find((w) => w.name === 'Beto')?.commission).toBe(100);
+    expect(r.summary.commissionTotal).toBe(750);
+  });
+
+  it('informa si el negocio tiene la comisión activada y con qué porcentaje', async () => {
+    await prisma.tenant.update({ where: { id: tenantId }, data: { commissionEnabled: true, commissionPct: 7.5 } });
+    const r = await service.sales(tenantId, { from: '2026-10-10', to: '2026-10-10', tz: BA });
+    expect(r.commission).toEqual({ enabled: true, pct: 7.5 });
+    expect(r.summary.commissionTotal).toBe(0);
   });
 
   it('las ventas sin detalle (sistema anterior) cuentan en los totales pero no en los platos', async () => {

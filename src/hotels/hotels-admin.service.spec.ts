@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ReportsService } from '../reports/reports.service';
 import { Actor, SalesService } from '../sales/sales.service';
 import { HotelsAdminService } from './hotels-admin.service';
+import { ReservationsService } from '../reservations/reservations.service';
 import { HotelsService } from './hotels.service';
 
 // Corre contra una base Postgres real y separada (coffee_manager_test).
@@ -29,7 +30,7 @@ describe('Hoteles: administración, alianzas y reporte', () => {
     prisma = new PrismaClient({ datasources: { db: { url: TEST_DATABASE_URL } } }) as PrismaService;
     await prisma.$connect();
     admin = new HotelsAdminService(prisma);
-    hotels = new HotelsService(prisma);
+    hotels = new HotelsService(prisma, new ReservationsService(prisma));
     sales = new SalesService(prisma);
     reports = new ReportsService(prisma);
   });
