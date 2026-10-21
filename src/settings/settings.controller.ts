@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Put } from '@nestjs/common';
 import { Role } from '@prisma/client';
-import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { Roles } from '../auth/roles.decorator';
 import { TenantId } from '../auth/tenant.decorator';
 import { SettingsService } from './settings.service';
@@ -17,6 +17,7 @@ class UpdateSettingsDto {
   @IsOptional() @IsString() @MaxLength(300) ticketFooter?: string;
   // ~400 KB como máximo; el frontend achica la imagen antes de enviarla
   @IsOptional() @IsString() @MaxLength(400_000) logoUrl?: string | null;
+  @IsOptional() @IsString() @Matches(/^#[0-9a-fA-F]{6}$/) brandColor?: string;
   @IsOptional() @IsString() @MaxLength(3) currencyCode?: string;
   @IsOptional() @IsString() @MaxLength(15) locale?: string;
   @IsOptional() @IsInt() @Min(0) @Max(23) shiftMorningStart?: number;

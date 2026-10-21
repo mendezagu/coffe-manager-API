@@ -15,6 +15,7 @@ export interface UpdateSettingsInput {
   phone?: string;
   ticketFooter?: string;
   logoUrl?: string | null;
+  brandColor?: string;
   currencyCode?: string;
   locale?: string;
   shiftMorningStart?: number;
@@ -66,6 +67,7 @@ export function mapSettings(t: Tenant) {
     phone: t.phone,
     ticketFooter: t.ticketFooter,
     logoUrl: t.logoUrl,
+    brandColor: t.brandColor,
     currencyCode: t.currencyCode,
     locale: t.locale,
     shiftMorningStart: t.shiftMorningStart,
@@ -204,6 +206,7 @@ export class SettingsService {
         phone: trim(input.phone),
         ticketFooter: input.ticketFooter?.trim(),
         logoUrl,
+        brandColor: input.brandColor === undefined ? undefined : this.cleanColor(input.brandColor),
         currencyCode,
         locale,
         shiftMorningStart: input.shiftMorningStart,
@@ -249,6 +252,12 @@ export class SettingsService {
       if (!(await this.prisma.tenant.findUnique({ where: { reservationSlug: candidate } }))) return candidate;
     }
     return `${base}-${Date.now().toString(36)}`;
+  }
+
+  // Color de marca: #RRGGBB (el frontend arma el resto de tonos y el color del texto)
+  private cleanColor(color: string): string {
+    if (!/^#[0-9a-fA-F]{6}$/.test(color)) throw new BadRequestException('El color tiene que ser un hexadecimal como #1b2822');
+    return color.toLowerCase();
   }
 
   // undefined = no tocar, null/'' = quitar el logo

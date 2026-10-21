@@ -172,6 +172,8 @@ model Tenant {
   phone        String  @default("")
   ticketFooter String  @default("")
   logoUrl      String?
+  // Color de marca de las pantallas que ven los clientes (carta QR y reservas): #RRGGBB
+  brandColor   String  @default("#1b2822")
 
   // Formato de dinero
   currencyCode String @default("ARS")

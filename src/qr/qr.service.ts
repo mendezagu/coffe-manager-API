@@ -110,7 +110,7 @@ export class QrService {
     ipLimiter.hit(ip);
     const ctx = await this.resolve(token);
     const { table, tenant } = ctx;
-    const business = { name: tenant.name, logoUrl: tenant.logoUrl, currencyCode: tenant.currencyCode, locale: tenant.locale };
+    const business = { name: tenant.name, logoUrl: tenant.logoUrl, brandColor: tenant.brandColor, currencyCode: tenant.currencyCode, locale: tenant.locale };
     const base = {
       business,
       table: { name: table.name },

@@ -111,6 +111,7 @@ export class ReservationsService {
       city: t.city,
       phone: t.phone,
       logoUrl: t.logoUrl,
+      brandColor: t.brandColor,
       slotMin: t.reservationSlotMin,
       durationMin: t.reservationDurationMin,
       maxParty: t.reservationMaxParty,
