@@ -245,7 +245,7 @@ describe('SalesService', () => {
       expect(saleB.totalAmount).toBe(2000);
     });
 
-    it('findAll, findOne y removeAll solo ven y borran las ventas del propio negocio', async () => {
+    it('findAll y findOne solo ven las ventas del propio negocio', async () => {
       const a = await item('Café', 1000);
       const b = await item('Café', 2000, {}, otherTenantId);
       const { table: tableA } = await tableWith([[a, 1]]);
@@ -255,9 +255,7 @@ describe('SalesService', () => {
 
       expect(await service.findAll(tenantId)).toHaveLength(1);
       await expect(service.findOne(tenantId, foreign._id)).rejects.toThrow(NotFoundException);
-
-      await service.removeAll(tenantId);
-      expect(await prisma.sale.count({ where: { tenantId } })).toBe(0);
+      expect(await prisma.sale.count({ where: { tenantId } })).toBe(1);
       expect(await prisma.sale.count({ where: { tenantId: otherTenantId } })).toBe(1);
     });
   });

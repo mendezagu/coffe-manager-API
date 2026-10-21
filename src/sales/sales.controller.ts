@@ -73,12 +73,6 @@ export class SalesController {
   findOne(@TenantId() tenantId: string, @Param('id') id: string) {
     return this.sales.findOne(tenantId, id);
   }
-
-  @Roles(Role.ADMIN)
-  @Delete()
-  removeAll(@TenantId() tenantId: string) {
-    return this.sales.removeAll(tenantId);
-  }
 }
 
 // Cobrar una mesa: registra la venta y la libera en una sola operación

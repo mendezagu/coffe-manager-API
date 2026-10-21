@@ -103,12 +103,6 @@ export class SalesService {
     return mapSale(sale);
   }
 
-  // Solo borra las ventas del negocio del usuario, nunca las de otros.
-  async removeAll(tenantId: string): Promise<{ message: string }> {
-    await this.prisma.sale.deleteMany({ where: { tenantId } });
-    return { message: 'Todos los balances han sido eliminados' };
-  }
-
   /**
    * Cobra la mesa (o una parte) en UNA transacción: se guarda la venta con su detalle, sus pagos y su
    * propina, y se descuentan los platos cobrados de la mesa, o no pasa nada. La mesa se libera

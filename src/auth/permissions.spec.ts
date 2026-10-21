@@ -38,7 +38,10 @@ describe('Permisos por rol en las rutas', () => {
   it('Balance (historial de ventas con su método de pago) es solo del administrador', () => {
     expect(rolesOf(SalesController, 'findAll')).toEqual(only(ADMIN));
     expect(rolesOf(SalesController, 'findOne')).toEqual(only(ADMIN));
-    expect(rolesOf(SalesController, 'removeAll')).toEqual(only(ADMIN));
+  });
+
+  it('el historial de ventas no se puede borrar desde la API (comenzar un turno nuevo no borra nada)', () => {
+    expect((SalesController.prototype as any).removeAll).toBeUndefined();
   });
 
   it('cobrar lo hacen administrador y cajero; el mozo no cobra', () => {
