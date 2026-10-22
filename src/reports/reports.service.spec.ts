@@ -343,4 +343,49 @@ describe('ReportsService.live (resumen del Inicio)', () => {
   it('rechaza una zona horaria inválida', async () => {
     await expect(service.live(tenantId, 'Marte/Olimpo', NOW)).rejects.toThrow(BadRequestException);
   });
+
+  describe('con un turno en curso', () => {
+    const SHIFT = new Date('2026-10-14T16:00:00Z'); // 13:00 en Buenos Aires
+
+    it('cuenta solo lo cobrado desde que empezó el turno y no compara con ayer', async () => {
+      await sale('2026-10-14T12:00:00Z', 1000, { openedAt: '2026-10-14T11:00:00Z' }); // antes del turno: no cuenta
+      await sale('2026-10-14T17:00:00Z', 2000, { openedAt: '2026-10-14T16:20:00Z' }); // 40 min
+      await sale('2026-10-13T10:00:00Z', 1500); // ayer: tampoco se compara
+
+      const live = await service.live(tenantId, BA, NOW, SHIFT);
+
+      expect(live.sales).toEqual({ total: 2000, count: 1 });
+      expect(live.yesterday).toEqual({ total: 0, count: 0 });
+      expect(live.changePct).toBeNull();
+      expect(live.averageStayMinutes).toBe(40);
+      expect(live.staysCount).toBe(1);
+    });
+
+    it('recién comenzado el turno todo está en cero', async () => {
+      await sale('2026-10-14T12:00:00Z', 1000, { openedAt: '2026-10-14T11:00:00Z' });
+
+      const live = await service.live(tenantId, BA, NOW, new Date('2026-10-14T17:59:00Z'));
+
+      expect(live.sales).toEqual({ total: 0, count: 0 });
+      expect(live.averageStayMinutes).toBeNull();
+      expect(live.staysCount).toBe(0);
+    });
+
+    it('un turno que cruza la medianoche cuenta también lo del día anterior', async () => {
+      await sale('2026-10-14T01:30:00Z', 800); // 22:30 del 13 en Buenos Aires, ya dentro del turno
+      await sale('2026-10-14T12:00:00Z', 200);
+
+      const live = await service.live(tenantId, BA, NOW, new Date('2026-10-14T00:00:00Z')); // 21:00 del 13
+
+      expect(live.sales).toEqual({ total: 1000, count: 2 });
+    });
+
+    it('un inicio de turno en el futuro se ignora y se muestra el día de hoy como siempre', async () => {
+      await sale('2026-10-14T12:00:00Z', 1000);
+
+      const live = await service.live(tenantId, BA, NOW, new Date('2026-10-15T00:00:00Z'));
+
+      expect(live.sales.total).toBe(1000);
+    });
+  });
 });

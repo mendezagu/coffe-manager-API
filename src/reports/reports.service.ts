@@ -22,7 +22,7 @@ export class ReportsService {
    * Resumen del momento para el Inicio del administrador: ventas de hoy comparadas con ayer HASTA LA MISMA
    * HORA (si no, a media mañana siempre "bajaría") y cuánto tiempo estuvieron ocupadas las mesas hoy.
    */
-  async live(tenantId: string, tz = 'UTC', now = new Date()) {
+  async live(tenantId: string, tz = 'UTC', now = new Date(), shiftStart?: Date) {
     if (!isValidTimeZone(tz)) throw new BadRequestException('Zona horaria no válida');
 
     const today = localDay(now, tz);
@@ -30,16 +30,23 @@ export class ReportsService {
     const yesterdayStart = startOfDay(addDays(today, -1), tz);
     const yesterdayNow = new Date(yesterdayStart.getTime() + (now.getTime() - todayStart.getTime()));
 
+    // Con un turno en curso el Inicio cuenta solo desde que se comenzó (aunque cruce la medianoche) y no se
+    // compara con ayer: arranca en cero. El historial completo queda en los reportes.
+    const from = shiftStart && shiftStart.getTime() <= now.getTime() ? shiftStart : todayStart;
+    const compare = from === todayStart;
+
     const [todaySales, yesterdaySales] = await Promise.all([
       this.prisma.sale.findMany({
-        where: { tenantId, date: { gte: todayStart, lte: now } },
+        where: { tenantId, date: { gte: from, lte: now } },
         select: { totalAmount: true, date: true, tableOpenedAt: true },
       }),
-      this.prisma.sale.aggregate({
-        where: { tenantId, date: { gte: yesterdayStart, lte: yesterdayNow } },
-        _sum: { totalAmount: true },
-        _count: true,
-      }),
+      compare
+        ? this.prisma.sale.aggregate({
+            where: { tenantId, date: { gte: yesterdayStart, lte: yesterdayNow } },
+            _sum: { totalAmount: true },
+            _count: true,
+          })
+        : Promise.resolve({ _sum: { totalAmount: 0 }, _count: 0 }),
     ]);
 
     const total = round2(todaySales.reduce((sum, s) => sum + s.totalAmount, 0));
