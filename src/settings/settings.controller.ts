@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Put } from '@nestjs/common';
+import { Body, Controller, Get, Post, Put } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { Roles } from '../auth/roles.decorator';
@@ -49,6 +49,23 @@ class UpdateSettingsDto {
   @IsOptional() @IsBoolean() qrAutoConfirm?: boolean;
   @IsOptional() @IsBoolean() qrRequirePin?: boolean;
   @IsOptional() @IsBoolean() onboardingDone?: boolean;
+}
+
+// Turno en curso: es del negocio, no de cada dispositivo (así todos ven lo mismo)
+@Controller('api/shift')
+export class ShiftController {
+  constructor(private readonly settings: SettingsService) {}
+
+  @Get()
+  get(@TenantId() tenantId: string) {
+    return this.settings.shift(tenantId);
+  }
+
+  @Roles(Role.ADMIN)
+  @Post('start')
+  start(@TenantId() tenantId: string) {
+    return this.settings.startShift(tenantId);
+  }
 }
 
 @Controller('api/settings')

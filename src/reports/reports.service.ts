@@ -25,6 +25,12 @@ export class ReportsService {
   async live(tenantId: string, tz = 'UTC', now = new Date(), shiftStart?: Date) {
     if (!isValidTimeZone(tz)) throw new BadRequestException('Zona horaria no válida');
 
+    // El turno en curso es del negocio (lo ven todos los dispositivos): si no se pasa uno, se toma el guardado
+    if (shiftStart === undefined) {
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { shiftStartedAt: true } });
+      shiftStart = tenant?.shiftStartedAt ?? undefined;
+    }
+
     const today = localDay(now, tz);
     const todayStart = startOfDay(today, tz);
     const yesterdayStart = startOfDay(addDays(today, -1), tz);

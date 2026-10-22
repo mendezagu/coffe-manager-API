@@ -126,6 +126,21 @@ export class SettingsService {
     return mapSettings(tenant);
   }
 
+  // Turno en curso del negocio (null si todavía no se comenzó ninguno)
+  async shift(tenantId: string): Promise<{ startedAt: Date | null }> {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { shiftStartedAt: true } });
+    if (!tenant) throw new NotFoundException('Negocio no encontrado');
+    return { startedAt: tenant.shiftStartedAt };
+  }
+
+  // Comienza un turno nuevo ahora: no se borra nada, solo cambia desde cuándo cuentan el Balance y el Inicio
+  async startShift(tenantId: string): Promise<{ startedAt: Date }> {
+    const startedAt = new Date();
+    const { count } = await this.prisma.tenant.updateMany({ where: { id: tenantId }, data: { shiftStartedAt: startedAt } });
+    if (count === 0) throw new NotFoundException('Negocio no encontrado');
+    return { startedAt };
+  }
+
   async update(tenantId: string, input: UpdateSettingsInput) {
     const current = await this.get(tenantId);
 

@@ -28,7 +28,8 @@ export class ReportsController {
   // Resumen de hoy para el Inicio (ventas vs ayer y permanencia promedio de las mesas)
   @Get('live')
   live(@TenantId() tenantId: string, @Query() query: LiveQueryDto) {
-    return this.reports.live(tenantId, query.tz, new Date(), query.since ? new Date(query.since) : undefined);
+    // Desde cuándo cuenta lo decide el servidor (turno del negocio); `since` de versiones anteriores de la app se ignora
+    return this.reports.live(tenantId, query.tz);
   }
 
   @Get('sales')

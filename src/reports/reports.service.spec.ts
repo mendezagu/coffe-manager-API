@@ -344,6 +344,17 @@ describe('ReportsService.live (resumen del Inicio)', () => {
     await expect(service.live(tenantId, 'Marte/Olimpo', NOW)).rejects.toThrow(BadRequestException);
   });
 
+  it('toma el turno guardado en el negocio, igual para todos los dispositivos', async () => {
+    await sale('2026-10-14T12:00:00Z', 1000); // antes del turno
+    await sale('2026-10-14T17:00:00Z', 2500); // dentro del turno
+    await prisma.tenant.update({ where: { id: tenantId }, data: { shiftStartedAt: new Date('2026-10-14T16:00:00Z') } });
+
+    const live = await service.live(tenantId, BA, NOW);
+
+    expect(live.sales).toEqual({ total: 2500, count: 1 });
+    expect(live.changePct).toBeNull();
+  });
+
   describe('con un turno en curso', () => {
     const SHIFT = new Date('2026-10-14T16:00:00Z'); // 13:00 en Buenos Aires
 
