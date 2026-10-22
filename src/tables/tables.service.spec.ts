@@ -40,6 +40,61 @@ describe('TablesService', () => {
   const newItem = (name = 'Café', tid = tenantId) =>
     prisma.menuItem.create({ data: { name, price: 100, tenantId: tid } });
 
+  describe('addItems con requestId (envíos repetidos)', () => {
+    const lines = async (tableId: string) => prisma.order.findMany({ where: { tableId } });
+
+    it('si el mismo envío llega dos veces, los platos se cargan una sola vez', async () => {
+      const table = await newTable('Mesa 1');
+      const item = await newItem();
+
+      await service.addItems(tenantId, table.id, [{ id: item.id, quantity: 1 }], 'envio-0001-abcdef');
+      const again = await service.addItems(tenantId, table.id, [{ id: item.id, quantity: 1 }], 'envio-0001-abcdef');
+
+      const orders = await lines(table.id);
+      expect(orders.reduce((n, o) => n + o.quantity, 0)).toBe(1);
+      expect(again.orders.reduce((n: number, o: any) => n + o.quantity, 0)).toBe(1); // devuelve la mesa como quedó
+    });
+
+    it('dos envíos simultáneos con el mismo identificador cargan los platos una sola vez', async () => {
+      const table = await newTable('Mesa 1');
+      const item = await newItem();
+
+      await Promise.all(Array.from({ length: 4 }, () => service.addItems(tenantId, table.id, [{ id: item.id, quantity: 2 }], 'envio-0002-abcdef')));
+
+      expect((await lines(table.id)).reduce((n, o) => n + o.quantity, 0)).toBe(2);
+    });
+
+    it('envíos distintos (otro identificador) se suman con normalidad', async () => {
+      const table = await newTable('Mesa 1');
+      const item = await newItem();
+
+      await service.addItems(tenantId, table.id, [{ id: item.id, quantity: 1 }], 'envio-0003-abcdef');
+      await service.addItems(tenantId, table.id, [{ id: item.id, quantity: 1 }], 'envio-0004-abcdef');
+
+      expect((await lines(table.id)).reduce((n, o) => n + o.quantity, 0)).toBe(2);
+    });
+
+    it('sin identificador funciona como siempre', async () => {
+      const table = await newTable('Mesa 1');
+      const item = await newItem();
+
+      await service.addItems(tenantId, table.id, [{ id: item.id, quantity: 1 }]);
+      await service.addItems(tenantId, table.id, [{ id: item.id, quantity: 1 }]);
+
+      expect((await lines(table.id)).reduce((n, o) => n + o.quantity, 0)).toBe(2);
+    });
+
+    it('un envío que falla no gasta su identificador: se puede reintentar', async () => {
+      const table = await newTable('Mesa 1');
+      const item = await newItem();
+
+      await expect(service.addItems(tenantId, table.id, [{ id: 'no-existe', quantity: 1 }], 'envio-0005-abcdef')).rejects.toThrow();
+      await service.addItems(tenantId, table.id, [{ id: item.id, quantity: 1 }], 'envio-0005-abcdef');
+
+      expect((await lines(table.id)).reduce((n, o) => n + o.quantity, 0)).toBe(1);
+    });
+  });
+
   describe('addItems', () => {
     it('registra la hora de apertura con el primer pedido y no la cambia con los siguientes', async () => {
       const table = await newTable('Mesa 1');

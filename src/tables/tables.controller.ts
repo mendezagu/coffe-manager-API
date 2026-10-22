@@ -38,8 +38,10 @@ export class TablesController {
 
   @Roles(Role.ADMIN, Role.CASHIER, Role.WAITER)
   @Put(':id/add-items')
-  addItems(@TenantId() tenantId: string, @Param('id') id: string, @Body() body: { items: any[] }) {
-    return this.tablesService.addItems(tenantId, id, body.items);
+  addItems(@TenantId() tenantId: string, @Param('id') id: string, @Body() body: { items: any[]; requestId?: string }) {
+    // requestId opcional: identifica este envío para que, si llega repetido, no se carguen los platos dos veces
+    const requestId = typeof body.requestId === 'string' && /^[\w-]{8,100}$/.test(body.requestId) ? body.requestId : undefined;
+    return this.tablesService.addItems(tenantId, id, body.items, requestId);
   }
 
   @Get('waiter-by-name/:name')

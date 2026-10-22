@@ -128,10 +128,34 @@ export class TablesService {
     return { message: 'Mesa eliminada' };
   }
 
-  async addItems(tenantId: string, id: string, items: any[]) {
+  // requestId: lo genera la pantalla por cada envío. Si el mismo llega dos veces (doble clic, reintento de la red o de un
+  // proxy, un servidor lento que hace volver a tocar el botón) los platos se cargan una sola vez y se devuelve la mesa como quedó.
+  async addItems(tenantId: string, id: string, items: any[], requestId?: string) {
     await this.requireTable(tenantId, id);
 
-    await this.prisma.$transaction(tx => this.addItemsTx(tx, tenantId, id, items));
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        if (requestId) {
+          // INSERT ... ON CONFLICT DO NOTHING: no aborta la transacción y dos envíos simultáneos se ordenan solos
+          const { count } = await tx.idempotencyKey.createMany({ data: [{ key: `add:${tenantId}:${id}:${requestId}`, tenantId }], skipDuplicates: true });
+          if (count === 0) return;
+        }
+        await this.addItemsTx(tx, tenantId, id, items);
+      });
+    } catch (error: any) {
+      // Si la tabla de claves todavía no existe (falta aplicar la migración en ese servidor), no se frena la carga
+      // de platos: se hace sin la protección de envíos repetidos.
+      if (requestId && error?.code === 'P2021') {
+        await this.prisma.$transaction((tx) => this.addItemsTx(tx, tenantId, id, items));
+      } else {
+        throw error;
+      }
+    }
+
+    // Limpieza de claves viejas, de vez en cuando (no hace falta que sea exacta)
+    if (requestId && Math.random() < 0.02) {
+      this.prisma.idempotencyKey.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 2 * 24 * 3600 * 1000) } } }).catch(() => undefined);
+    }
 
     const updatedTable = await this.prisma.table.findUnique({ where: { id }, include: POPULATED_INCLUDE });
     return mapTable(updatedTable, { populateOrders: true });

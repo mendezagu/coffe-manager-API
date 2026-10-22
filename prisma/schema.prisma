@@ -851,3 +851,14 @@ model PlatformUser {
 
   @@map("platform_users")
 }
+
+// Pedidos que el servidor ya procesó, para no repetirlos si el mismo envío llega dos veces (doble clic, un reintento
+// de la red o de un proxy). Por ahora lo usa "agregar platos a una mesa"; las claves se borran después de un par de días.
+model IdempotencyKey {
+  key       String   @id
+  tenantId  String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("idempotency_keys")
+}
