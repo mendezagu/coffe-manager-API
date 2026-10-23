@@ -69,13 +69,14 @@ describe('ReportsService', () => {
       payments?: { method: string; amount: number }[];
       items?: { name: string; unitPrice: number; quantity: number; lineTotal: number; isPromo?: boolean }[];
       tenant?: string;
+      table?: string;
     },
   ) {
     return prisma.sale.create({
       data: {
         tenantId: opts.tenant ?? tenantId,
         checkoutId: `co-${++n}-${Math.random()}`,
-        tableName: 'Mesa 1',
+        tableName: opts.table ?? 'Mesa 1',
         waiterName: opts.waiter ?? 'Mario',
         paymentMethod: opts.payment ?? 'efectivo',
         grossTotal: opts.total,
@@ -160,6 +161,32 @@ describe('ReportsService', () => {
       { method: 'efectivo', salesCount: 2, totalAmount: 4500 },
       { method: 'tarjeta', salesCount: 1, totalAmount: 1000 },
     ]);
+  });
+
+  it('mesas más ocupadas: cuántas veces se cobró cada una, de mayor a menor, y solo las 10 primeras', async () => {
+    await sale('2026-10-10T15:00:00Z', { total: 1000, table: 'Mesa 7' });
+    await sale('2026-10-10T16:00:00Z', { total: 1000, table: 'Mesa 7' });
+    await sale('2026-10-10T17:00:00Z', { total: 1000, table: 'Mesa 7' });
+    await sale('2026-10-10T18:00:00Z', { total: 9000, table: 'Deck 2' });
+    await sale('2026-10-10T19:00:00Z', { total: 100, table: 'Deck 2' });
+    await sale('2026-10-10T20:00:00Z', { total: 500, table: 'Playa 1' });
+    await sale('2026-10-10T21:00:00Z', { total: 500, table: 'Playa 1' });
+
+    const r = await service.sales(tenantId, { from: '2026-10-10', to: '2026-10-10', tz: BA });
+
+    expect(r.byTable).toEqual([
+      { name: 'Mesa 7', salesCount: 3, totalAmount: 3000 },
+      { name: 'Deck 2', salesCount: 2, totalAmount: 9100 }, // empata en cantidad con Playa 1 y gana por importe
+      { name: 'Playa 1', salesCount: 2, totalAmount: 1000 },
+    ]);
+  });
+
+  it('mesas más ocupadas muestra como máximo 10 mesas', async () => {
+    for (let i = 1; i <= 12; i++) await sale('2026-10-10T15:00:00Z', { total: 100, table: `Mesa ${i}` });
+
+    const r = await service.sales(tenantId, { from: '2026-10-10', to: '2026-10-10', tz: BA });
+
+    expect(r.byTable).toHaveLength(10);
   });
 
   it('por método de pago cuenta lo que entró con cada uno: un cobro mixto suma en varios', async () => {

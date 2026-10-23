@@ -104,6 +104,7 @@ export class ReportsService {
 
     const byWaiter = new Map<string, { salesCount: number; totalAmount: number }>();
     const byPayment = new Map<string, { salesCount: number; totalAmount: number }>();
+    const byTable = new Map<string, { salesCount: number; totalAmount: number }>();
     const items = new Map<string, { quantity: number; amount: number; costQty: number; costAmount: number; cost: number }>();
     const add = (m: Map<string, { salesCount: number; totalAmount: number }>, key: string, amount: number) => {
       const row = m.get(key) ?? { salesCount: 0, totalAmount: 0 };
@@ -135,6 +136,7 @@ export class ReportsService {
       discountTotal += sale.discountTotal;
       add(byDay, localDay(sale.date, tz), sale.totalAmount);
       add(byWaiter, sale.waiterName || 'Sin mozo', sale.totalAmount);
+      add(byTable, sale.tableName || 'Sin mesa', sale.totalAmount);
       // Por método de pago se cuenta lo que realmente entró con cada uno (un cobro mixto suma en varios).
       // Las ventas viejas sin pagos registrados cuentan con su método único.
       if (sale.payments.length) for (const p of sale.payments) add(byPayment, p.method, p.amount);
@@ -228,6 +230,11 @@ export class ReportsService {
         commission: round2(waiterCommission.get(w.name) ?? 0),
       })),
       byPayment: rank(byPayment, 'method'),
+      // Mesas más ocupadas: cuántas veces se cobró cada una (empata por importe), las 10 primeras
+      byTable: [...byTable.entries()]
+        .map(([name, v]) => ({ name, salesCount: v.salesCount, totalAmount: round2(v.totalAmount) }))
+        .sort((a, b) => b.salesCount - a.salesCount || b.totalAmount - a.totalAmount)
+        .slice(0, 10),
       byHotel: [...hotelAgg.entries()]
         .map(([hotelId, v]) => ({
           hotelId,
