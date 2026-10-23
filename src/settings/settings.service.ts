@@ -1,11 +1,13 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Tenant } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { FEATURE_LABELS, featuresOf, hasFeature } from '../plans/plans';
 import { slugify, validateRules } from '../reservations/reservations.logic';
+import { LOGIN_CODE_RE, normalizeLoginCode } from '../auth/login-code';
 
 export interface UpdateSettingsInput {
   name?: string;
+  loginCode?: string;
   legalName?: string;
   taxIdLabel?: string;
   taxId?: string;
@@ -58,6 +60,7 @@ export function mapSettings(t: Tenant) {
   return {
     id: t.id,
     name: t.name,
+    loginCode: t.loginCode,
     legalName: t.legalName,
     taxIdLabel: t.taxIdLabel,
     taxId: t.taxId,
@@ -205,13 +208,25 @@ export class SettingsService {
       throw new BadRequestException('Los turnos tienen que empezar en orden: mañana, tarde y noche');
     }
 
+    // Código para ingresar: minúsculas, números y guiones. Cambiarlo obliga a escribirlo de nuevo en cada dispositivo
+    let loginCode: string | undefined;
+    if (input.loginCode !== undefined) {
+      loginCode = normalizeLoginCode(input.loginCode);
+      if (!LOGIN_CODE_RE.test(loginCode)) {
+        throw new BadRequestException('El código tiene que tener entre 3 y 40 caracteres: letras minúsculas, números y guiones (sin espacios)');
+      }
+    }
+
     const logoUrl = this.cleanLogo(input.logoUrl);
     const trim = (v?: string) => (v === undefined ? undefined : v.trim());
 
-    const tenant = await this.prisma.tenant.update({
+    let tenant;
+    try {
+      tenant = await this.prisma.tenant.update({
       where: { id: tenantId },
       data: {
         name: trim(input.name),
+        loginCode,
         legalName: trim(input.legalName),
         taxIdLabel: trim(input.taxIdLabel),
         taxId: trim(input.taxId),
@@ -256,6 +271,10 @@ export class SettingsService {
         onboardingDone: input.onboardingDone ?? undefined,
       },
     });
+    } catch (e: any) {
+      if (e?.code === 'P2002' && loginCode) throw new ConflictException('Ese código ya lo usa otro local. Probá con otro.');
+      throw e;
+    }
     return mapSettings(tenant);
   }
 

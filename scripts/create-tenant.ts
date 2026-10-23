@@ -8,6 +8,7 @@
 import { PrismaClient, Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import 'dotenv/config';
+import { freeLoginCode } from '../src/auth/login-code';
 import { PLAN_FEATURES } from '../src/plans/plans';
 
 function arg(name: string): string | undefined {
@@ -37,13 +38,12 @@ async function main() {
       console.error(`Plan desconocido "${plan}". Planes: ${Object.keys(PLAN_FEATURES).join(', ')}`);
       process.exit(1);
     }
-    if (await prisma.user.findUnique({ where: { email } })) {
-      console.error(`Ya existe un usuario con el email ${email}.`);
-      process.exit(1);
-    }
+    // El usuario solo tiene que ser único dentro del local (el local nuevo todavía no tiene usuarios)
+    const loginCode = await freeLoginCode(prisma, name);
     const tenant = await prisma.tenant.create({
       data: {
         name: name.trim(),
+        loginCode,
         plan,
         users: {
           create: { email, name: adminName, role: Role.ADMIN, passwordHash: await bcrypt.hash(password, 10) },
@@ -51,6 +51,7 @@ async function main() {
       },
     });
     console.log(`Negocio "${tenant.name}" creado (id ${tenant.id}). Admin: ${email}`);
+    console.log(`Código del local para ingresar: ${tenant.loginCode}`);
   } finally {
     await prisma.$disconnect();
   }

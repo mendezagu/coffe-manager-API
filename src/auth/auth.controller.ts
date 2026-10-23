@@ -1,16 +1,28 @@
-import { Body, Controller, Get, Post, Req } from '@nestjs/common';
-import { IsString, MaxLength, MinLength } from 'class-validator';
+import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { RateLimiter } from '../qr/rate-limit';
 import { AllowPendingPassword } from './allow-password-change.decorator';
 import { AuthService } from './auth.service';
 import { Public } from './public.decorator';
 
 class LoginDto {
-  @IsString()
+  // Usuario del local (puede ser un email). Se sigue llamando email por compatibilidad con versiones anteriores de la app
+  @IsString() @MaxLength(80)
   email: string;
 
-  @IsString()
+  @IsString() @MaxLength(100)
   password: string;
+
+  // Código del local
+  @IsOptional() @IsString() @MaxLength(40)
+  code?: string;
 }
+
+// Frena a quien prueba claves: por conexión y por usuario dentro de cada local
+const ipLimiter = new RateLimiter(30, 10 * 60 * 1000);
+const userLimiter = new RateLimiter(10, 10 * 60 * 1000);
+const localLimiter = new RateLimiter(40, 10 * 60 * 1000);
+const ipOf = (req: any): string => String(req?.ip ?? req?.socket?.remoteAddress ?? 'desconocida');
 
 class ChangePasswordDto {
   @IsString()
@@ -28,8 +40,18 @@ export class AuthController {
 
   @Public()
   @Post('login')
-  login(@Body() dto: LoginDto) {
-    return this.auth.login(dto.email, dto.password);
+  login(@Body() dto: LoginDto, @Req() req: any) {
+    ipLimiter.hit(ipOf(req), 'Demasiados intentos. Esperá unos minutos.');
+    userLimiter.hit(`${(dto.code ?? '').trim().toLowerCase()}:${dto.email.trim().toLowerCase()}`, 'Demasiados intentos con este usuario. Esperá unos minutos.');
+    return this.auth.login(dto.email, dto.password, dto.code);
+  }
+
+  // Nombre y logo del local, para confirmar el código antes de pedir la clave
+  @Public()
+  @Get('local/:code')
+  local(@Param('code') code: string, @Req() req: any) {
+    localLimiter.hit(ipOf(req), 'Demasiadas consultas. Esperá unos minutos.');
+    return this.auth.localInfo(code);
   }
 
   @AllowPendingPassword()

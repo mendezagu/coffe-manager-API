@@ -133,7 +133,8 @@ enum Role {
 
 model User {
   id           String   @id @default(uuid())
-  email        String   @unique
+  // Nombre de usuario (puede ser un email): único dentro de cada local, no en toda la plataforma
+  email        String
   name         String
   passwordHash String
   role         Role
@@ -145,6 +146,7 @@ model User {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  @@unique([tenantId, email])
   @@index([tenantId])
   @@map("users")
 }
@@ -160,6 +162,8 @@ enum OrderStatus {
 model Tenant {
   id        String   @id @default(uuid())
   name      String
+  // Código con el que el personal identifica al local al ingresar (junto a su usuario). Único en toda la plataforma.
+  loginCode String   @unique @default(uuid())
   createdAt DateTime @default(now())
 
   // Datos para tickets y comandas

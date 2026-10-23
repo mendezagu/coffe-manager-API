@@ -1,8 +1,9 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PLAN_FEATURES } from '../plans/plans';
 import { PrismaService } from '../prisma/prisma.service';
+import { freeLoginCode } from '../auth/login-code';
 
 export interface CreateTenantInput {
   name: string;
@@ -27,6 +28,7 @@ export class PlatformTenantsService {
       select: {
         id: true,
         name: true,
+        loginCode: true,
         plan: true,
         createdAt: true,
         legalName: true,
@@ -48,6 +50,7 @@ export class PlatformTenantsService {
     return tenants.map((t) => ({
       id: t.id,
       name: t.name,
+      loginCode: t.loginCode,
       plan: t.plan,
       createdAt: t.createdAt,
       users: t._count.users,
@@ -77,11 +80,13 @@ export class PlatformTenantsService {
     if (!email || !EMAIL.test(email)) throw new BadRequestException('El email del administrador no es válido');
     if (!input.password || input.password.length < 8) throw new BadRequestException('La contraseña tiene que tener al menos 8 caracteres');
     if (!(plan in PLAN_FEATURES)) throw new BadRequestException(`Plan desconocido. Planes: ${Object.keys(PLAN_FEATURES).join(', ')}`);
-    if (await this.prisma.user.findUnique({ where: { email } })) throw new ConflictException('Ya existe un usuario con ese email');
 
+    // El usuario solo tiene que ser único dentro del local; el local nuevo todavía no tiene usuarios
+    const loginCode = await freeLoginCode(this.prisma, name);
     const tenant = await this.prisma.tenant.create({
       data: {
         name,
+        loginCode,
         plan,
         users: {
           create: {
@@ -95,6 +100,6 @@ export class PlatformTenantsService {
         },
       },
     });
-    return { id: tenant.id, name: tenant.name, plan: tenant.plan, adminEmail: email };
+    return { id: tenant.id, name: tenant.name, plan: tenant.plan, adminEmail: email, loginCode: tenant.loginCode };
   }
 }

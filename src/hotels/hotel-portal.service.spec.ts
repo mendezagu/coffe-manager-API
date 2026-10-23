@@ -172,15 +172,16 @@ describe('Portal del hotel y alta de restaurantes', () => {
       const t = await tenants.create({ name: ' Parrilla Sur ', adminEmail: 'Dueno@Parrilla.com', password: 'clave-larga-1' });
 
       expect(t).toEqual(expect.objectContaining({ name: 'Parrilla Sur', plan: 'pro', adminEmail: 'dueno@parrilla.com' }));
-      const user = await prisma.user.findUniqueOrThrow({ where: { email: 'dueno@parrilla.com' } });
+      const user = await prisma.user.findUniqueOrThrow({ where: { tenantId_email: { tenantId: t.id, email: 'dueno@parrilla.com' } } });
       expect(user).toEqual(expect.objectContaining({ role: 'ADMIN', tenantId: t.id }));
       expect((await tenants.list()).map((x) => x.name)).toContain('Parrilla Sur');
     });
 
-    it('valida los datos y no repite emails', async () => {
+    it('valida los datos y permite el mismo usuario en locales distintos', async () => {
       await tenants.create({ name: 'A', adminEmail: 'a@a.com', password: 'clave-larga-1' });
 
-      await expect(tenants.create({ name: 'B', adminEmail: 'a@a.com', password: 'clave-larga-1' })).rejects.toThrow(ConflictException);
+      // El usuario ahora es único por local: otro restaurante puede tener su administrador con el mismo email
+      await expect(tenants.create({ name: 'B', adminEmail: 'a@a.com', password: 'clave-larga-1' })).resolves.toEqual(expect.objectContaining({ loginCode: 'b-local' }));
       await expect(tenants.create({ name: '', adminEmail: 'b@b.com', password: 'clave-larga-1' })).rejects.toThrow(BadRequestException);
       await expect(tenants.create({ name: 'B', adminEmail: 'no-es-mail', password: 'clave-larga-1' })).rejects.toThrow(BadRequestException);
       await expect(tenants.create({ name: 'B', adminEmail: 'b@b.com', password: 'corta' })).rejects.toThrow(BadRequestException);

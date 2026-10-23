@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma, Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { normalizeUsername } from '../auth/login-code';
 
 const SELECT = { id: true, email: true, name: true, role: true, active: true, createdAt: true };
 
@@ -51,7 +52,7 @@ export class UsersService implements OnModuleInit {
       return await this.prisma.user.create({
         data: {
           tenantId,
-          email: data.email.trim().toLowerCase(),
+          email: normalizeUsername(data.email),
           name: data.name.trim(),
           role: data.role,
           passwordHash: await bcrypt.hash(data.password, 10),
@@ -60,7 +61,7 @@ export class UsersService implements OnModuleInit {
       });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-        throw new ConflictException('Ya existe un usuario con ese email');
+        throw new ConflictException('Ya hay un usuario con ese nombre en tu local');
       }
       throw e;
     }

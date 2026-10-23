@@ -1,12 +1,13 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Req } from '@nestjs/common';
 import { Role } from '@prisma/client';
-import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsString, Matches, MinLength } from 'class-validator';
 import { Roles } from '../auth/roles.decorator';
 import { TenantId } from '../auth/tenant.decorator';
 import { UsersService } from './users.service';
 
 class CreateUserDto {
-  @IsEmail()
+  // Usuario con el que entra al local: letras, números y . _ - @ + (de 3 a 60). Puede ser un email.
+  @Matches(/^[A-Za-z0-9._@+-]{3,60}$/, { message: 'El usuario puede tener letras, números y . _ - @ + (de 3 a 60 caracteres, sin espacios)' })
   email: string;
 
   @IsString()

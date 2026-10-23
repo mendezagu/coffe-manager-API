@@ -7,6 +7,7 @@ import { SettingsService } from './settings.service';
 
 class UpdateSettingsDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(80) name?: string;
+  @IsOptional() @IsString() @MaxLength(40) loginCode?: string;
   @IsOptional() @IsString() @MaxLength(120) legalName?: string;
   @IsOptional() @IsString() @MaxLength(20) taxIdLabel?: string;
   @IsOptional() @IsString() @MaxLength(40) taxId?: string;
