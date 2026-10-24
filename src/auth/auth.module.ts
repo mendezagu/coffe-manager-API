@@ -17,7 +17,7 @@ import { RolesGuard } from './roles.guard';
         if (!secret || secret.length < 32) {
           throw new Error('JWT_SECRET es obligatorio y debe tener al menos 32 caracteres');
         }
-        return { secret, signOptions: { expiresIn: (config.get<string>('JWT_EXPIRES_IN') ?? '12h') as JwtSignOptions['expiresIn'] } };
+        return { secret, signOptions: { expiresIn: (config.get<string>('JWT_EXPIRES_IN') ?? '7d') as JwtSignOptions['expiresIn'] } };
       },
     }),
   ],

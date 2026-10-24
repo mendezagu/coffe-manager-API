@@ -368,7 +368,8 @@ export class SalesService {
   }
 
   private assertMethod(method: string | undefined) {
-    if (!method || !(PAYMENT_METHODS as readonly string[]).includes(method)) {
+    if (!method) throw new BadRequestException('Elegí el método de pago para poder cobrar');
+    if (!(PAYMENT_METHODS as readonly string[]).includes(method)) {
       throw new BadRequestException('Método de pago no válido');
     }
   }

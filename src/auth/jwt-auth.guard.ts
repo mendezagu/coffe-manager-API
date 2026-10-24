@@ -24,7 +24,7 @@ export class JwtAuthGuard implements CanActivate {
     const [type, token] = (request.headers.authorization ?? '').split(' ');
     if (type !== 'Bearer' || !token) throw new UnauthorizedException('Falta el token');
 
-    let payload: { sub: string; typ?: string };
+    let payload: { sub: string; typ?: string; iat?: number };
     try {
       payload = await this.jwt.verifyAsync(token);
     } catch {
@@ -38,6 +38,11 @@ export class JwtAuthGuard implements CanActivate {
     // baja del usuario tiene efecto inmediato, sin esperar a que venza el token.
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user || !user.active) throw new UnauthorizedException('Usuario inactivo');
+
+    // Una sesión abierta antes de cambiar la contraseña ya no vale (si alguien tenía la sesión, deja de tenerla)
+    if (user.passwordChangedAt && typeof payload.iat === 'number' && payload.iat < Math.floor(user.passwordChangedAt.getTime() / 1000)) {
+      throw new UnauthorizedException('La contraseña cambió: ingresá de nuevo');
+    }
 
     // Si la contraseña se la puso otra persona, hasta que la cambie solo puede ver su sesión y cambiarla
     if (user.mustChangePassword) {

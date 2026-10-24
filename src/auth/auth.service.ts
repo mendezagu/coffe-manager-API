@@ -51,6 +51,15 @@ export class AuthService {
     };
   }
 
+  // Renueva la sesión: entrega un token nuevo con la duración completa. La app lo pide mientras se usa, así una persona
+  // que está trabajando no se queda sin sesión a mitad del turno; si deja el equipo apagado o bloqueado más que la
+  // duración, la sesión vence igual.
+  async refresh(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.active) throw new UnauthorizedException('Usuario inactivo');
+    return { accessToken: await this.jwt.signAsync({ sub: user.id }) };
+  }
+
   // Datos públicos mínimos de un local, para que quien entra confirme que escribió bien el código (nombre y logo)
   async localInfo(code: string) {
     const tenant = await this.prisma.tenant.findUnique({
@@ -77,8 +86,9 @@ export class AuthService {
     }
     await this.prisma.user.update({
       where: { id: userId },
-      data: { passwordHash: await bcrypt.hash(newPassword, 10), mustChangePassword: false },
+      data: { passwordHash: await bcrypt.hash(newPassword, 10), mustChangePassword: false, passwordChangedAt: new Date() },
     });
-    return { message: 'Contraseña actualizada' };
+    // Las demás sesiones abiertas dejan de valer; esta sigue con un token nuevo
+    return { message: 'Contraseña actualizada', accessToken: await this.jwt.signAsync({ sub: userId }) };
   }
 }

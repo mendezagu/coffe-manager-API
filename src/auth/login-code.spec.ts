@@ -95,6 +95,23 @@ describe('Ingreso con código del local', () => {
     });
   });
 
+  describe('renovar la sesión', () => {
+    it('entrega un token nuevo a quien está activo', async () => {
+      const ua = await user(a, 'mozo', 'clave-del-local-a');
+
+      const res = await auth.refresh(ua.id);
+
+      expect(JSON.parse(res.accessToken)).toEqual({ sub: ua.id });
+    });
+
+    it('no renueva a un usuario dado de baja ni a uno que no existe', async () => {
+      const ua = await user(a, 'mozo', 'clave-del-local-a', { active: false });
+
+      await expect(auth.refresh(ua.id)).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(auth.refresh('no-existe')).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+  });
+
   describe('crear usuarios', () => {
     it('el mismo nombre en dos locales está permitido, y repetido dentro del local no', async () => {
       await users.create(a, { email: 'Cajero', password: 'clave-larga-1', name: 'Cajera A', role: Role.CASHIER });

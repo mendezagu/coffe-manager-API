@@ -122,7 +122,15 @@ describe('Cobro: pagos mixtos, propinas, cobro por partes y caja', () => {
     it('sin método ni pagos no se cobra', async () => {
       const { table } = await tableSetup();
 
-      await expect(sales.checkout(tenantId, cashier, table.id, { checkoutId: id() })).rejects.toThrow(BadRequestException);
+      await expect(sales.checkout(tenantId, cashier, table.id, { checkoutId: id() })).rejects.toThrow('Elegí el método de pago');
+    });
+
+    it('un pago con método vacío tampoco se acepta', async () => {
+      const { table } = await tableSetup();
+
+      await expect(sales.checkout(tenantId, cashier, table.id, { checkoutId: id(), payments: [{ method: '', amount: 5500 }] })).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 

@@ -29,7 +29,7 @@ export class RealtimeAuth {
   }
 
   private async staff(token: string): Promise<SocketAccess | null> {
-    let payload: { sub: string; exp?: number };
+    let payload: { sub: string; exp?: number; iat?: number };
     try {
       payload = await this.jwt.verifyAsync(token);
     } catch {
@@ -38,6 +38,7 @@ export class RealtimeAuth {
     // Igual que en las consultas HTTP: se mira el usuario en la base para que una baja tenga efecto inmediato
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user || !user.active) return null;
+    if (user.passwordChangedAt && typeof payload.iat === 'number' && payload.iat < Math.floor(user.passwordChangedAt.getTime() / 1000)) return null;
     return {
       rooms: [tenantRoom(user.tenantId)],
       expiresInMs: payload.exp ? payload.exp * 1000 - Date.now() : undefined,

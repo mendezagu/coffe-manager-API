@@ -92,6 +92,7 @@ export class UsersService implements OnModuleInit {
         role: data.role,
         active: data.active,
         passwordHash: data.password ? await bcrypt.hash(data.password, 10) : undefined,
+        passwordChangedAt: data.password ? new Date() : undefined,
       },
       select: SELECT,
     });

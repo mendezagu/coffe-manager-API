@@ -54,6 +54,13 @@ export class AuthController {
     return this.auth.localInfo(code);
   }
 
+  // Token nuevo para quien ya tiene sesión (renovación mientras trabaja)
+  @AllowPendingPassword()
+  @Post('refresh')
+  refresh(@Req() req: any) {
+    return this.auth.refresh(req.user.id);
+  }
+
   @AllowPendingPassword()
   @Get('me')
   me(@Req() req: any) {

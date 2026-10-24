@@ -105,6 +105,34 @@ describe('Cambio de contraseña', () => {
     }
   });
 
+  describe('sesiones abiertas antes de cambiar la contraseña', () => {
+    const tokenAt = (userId: string, iat: number) => JSON.stringify({ sub: userId, iat });
+
+    it('una sesión anterior al cambio deja de valer, y la posterior sigue valiendo', async () => {
+      const user = await newUser(false);
+      const before = Math.floor(Date.now() / 1000) - 60;
+      await auth.changePassword(user.id, 'inicial123', 'nueva-clave-segura');
+      const after = Math.floor(Date.now() / 1000) + 1;
+
+      await expect(guard.canActivate(ctxFor(tokenAt(user.id, before), function listarMesas() {}).context)).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(guard.canActivate(ctxFor(tokenAt(user.id, after), function listarMesas() {}).context)).resolves.toBe(true);
+    });
+
+    it('cambiar la contraseña devuelve un token nuevo para seguir en la sesión actual', async () => {
+      const user = await newUser(false);
+
+      const res = await auth.changePassword(user.id, 'inicial123', 'nueva-clave-segura');
+
+      expect(JSON.parse(res.accessToken)).toEqual({ sub: user.id });
+    });
+
+    it('una sesión sin fecha de emisión o de un usuario que nunca cambió la clave no se rechaza', async () => {
+      const user = await newUser(false);
+
+      await expect(guard.canActivate(ctxFor(tokenAt(user.id, 1), function listarMesas() {}).context)).resolves.toBe(true);
+    });
+  });
+
   it('con la contraseña ya cambiada, todas las rutas vuelven a estar disponibles', async () => {
     const user = await newUser(true);
     const token = await jwt.signAsync({ sub: user.id });

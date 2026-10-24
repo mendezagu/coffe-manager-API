@@ -142,6 +142,8 @@ model User {
   createdAt    DateTime @default(now())
   // La contraseña la puso otra persona (por ejemplo, el alta desde la consola): tiene que cambiarla antes de usar la app
   mustChangePassword Boolean @default(false)
+  // Cuándo se cambió la contraseña por última vez: las sesiones abiertas antes de ese momento dejan de valer
+  passwordChangedAt DateTime?
 
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
