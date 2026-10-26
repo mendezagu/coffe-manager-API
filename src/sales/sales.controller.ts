@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsNumber,
@@ -55,6 +56,21 @@ class CheckoutDto {
   items?: ItemDiscountDto[];
 }
 
+class CounterLineDto {
+  @IsString() menuItemId: string;
+  @IsInt() @Min(1) @Max(99) quantity: number;
+}
+
+class CounterCheckoutDto {
+  @IsString() @MinLength(8) @MaxLength(100) checkoutId: string;
+  @IsArray() @ArrayMaxSize(100) @ValidateNested({ each: true }) @Type(() => CounterLineDto) items: CounterLineDto[];
+  @IsOptional() @IsBoolean() takeaway?: boolean;
+  @IsOptional() @IsIn(PAYMENT_METHODS as unknown as string[]) paymentMethod?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(4) @ValidateNested({ each: true }) @Type(() => PaymentDto) payments?: PaymentDto[];
+  @IsOptional() @IsNumber() @Min(0) tip?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(100) globalDiscount?: number;
+}
+
 // Historial de ventas (la pantalla de Balance)
 @Controller('api/balances')
 export class SalesController {
@@ -84,5 +100,17 @@ export class CheckoutController {
   @Post(':id/checkout')
   checkout(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: CheckoutDto, @Req() req: any) {
     return this.sales.checkout(tenantId, { id: req.user.id, name: req.user.name, role: req.user.role }, id, dto);
+  }
+}
+
+// Venta por mostrador: se cobra sin mesa
+@Controller('api/counter')
+export class CounterController {
+  constructor(private readonly sales: SalesService) {}
+
+  @Roles(Role.ADMIN, Role.CASHIER)
+  @Post('checkout')
+  checkout(@TenantId() tenantId: string, @Body() dto: CounterCheckoutDto, @Req() req: any) {
+    return this.sales.counterCheckout(tenantId, { id: req.user.id, name: req.user.name, role: req.user.role }, dto);
   }
 }

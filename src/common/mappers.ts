@@ -16,6 +16,7 @@ export function mapMenuItem(item: MenuItem & { modifierGroups?: { groupId: strin
     price: item.price,
     quantity: item.quantity,
     isPromo: item.isPromo,
+    isFavorite: item.isFavorite,
     categoryId: item.categoryId ?? null,
     // ids de los modificadores que ofrece este plato (el detalle está en /api/modifiers)
     modifierGroupIds: (item.modifierGroups ?? []).map((g) => g.groupId),

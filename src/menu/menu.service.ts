@@ -60,6 +60,7 @@ export class MenuService {
             price: updateMenuItemDto.price,
             // undefined = Prisma no toca la columna (ediciones parciales)
             isPromo: updateMenuItemDto.isPromo,
+            isFavorite: typeof updateMenuItemDto.isFavorite === 'boolean' ? updateMenuItemDto.isFavorite : undefined,
             categoryId,
             // si lo editó, deja de ser un plato de ejemplo
             isExample: false,

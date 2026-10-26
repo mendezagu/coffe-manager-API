@@ -42,6 +42,8 @@ model MenuItem {
   isPromo  Boolean @default(false)
   // true = viene de la plantilla de ejemplo y todavía no se tocó
   isExample Boolean @default(false)
+  // fijado como favorito: aparece primero en la caja del mostrador
+  isFavorite Boolean @default(false)
   orders   Order[]
 
   // opcional: un plato sin categoría se trata como de cocina
@@ -302,6 +304,9 @@ model Sale {
   date          DateTime   @default(now())
   // cuándo se pidió lo primero en la mesa; solo en el cobro que la libera (sirve para la permanencia promedio)
   tableOpenedAt DateTime?
+  // dónde se vendió: en una mesa o en el mostrador (sin mesa ni mozo); en el mostrador, takeaway = para llevar
+  source        String     @default("mesa")
+  takeaway      Boolean    @default(false)
   items         SaleItem[]
   payments      Payment[]
 

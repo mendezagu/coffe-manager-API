@@ -10,7 +10,20 @@ import { PrismaService } from '../prisma/prisma.service';
 import { newTablePin } from '../qr/qr.tokens';
 import { ValidVoucher, findUsableVoucher, redeemVoucher } from '../hotels/vouchers.logic';
 import { modifiersTotal, readSnapshot } from '../modifiers/modifiers.logic';
-import { StockRequest, consumption, deductForSale, hasRecipe, loadContext, optionIdsOf, unitCost } from '../inventory/inventory.logic';
+import {
+  StockRequest,
+  availableStock,
+  committedConsumption,
+  consumption,
+  deductForSale,
+  findShortages,
+  hasRecipe,
+  loadContext,
+  lockStock,
+  optionIdsOf,
+  shortageMessage,
+  unitCost,
+} from '../inventory/inventory.logic';
 
 export const PAYMENT_METHODS = ['efectivo', 'transferencia', 'qr', 'tarjeta'] as const;
 export const MIXED_PAYMENT = 'mixto';
@@ -35,6 +48,17 @@ export interface CheckoutInput {
   voucherCode?: string;
 }
 
+// Venta por mostrador: lo mismo que el cobro de una mesa, pero con los productos en vez de una mesa
+export interface CounterCheckoutInput {
+  checkoutId: string;
+  items: { menuItemId: string; quantity: number }[];
+  takeaway?: boolean; // para llevar (si no, se consume en el local)
+  paymentMethod?: string;
+  payments?: PaymentInput[];
+  tip?: number;
+  globalDiscount?: number;
+}
+
 export interface Actor {
   id: string;
   name: string;
@@ -50,6 +74,8 @@ export function mapSale(sale: SaleDetail) {
     _id: sale.id,
     orderId: sale.checkoutId,
     tableName: sale.tableName,
+    source: sale.source,
+    takeaway: sale.takeaway,
     waiterName: sale.waiterName,
     cashierName: sale.cashierName,
     paymentMethod: sale.paymentMethod,
@@ -293,6 +319,124 @@ export class SalesService {
     }
   }
 
+  /**
+   * Venta por mostrador: se cobra lo que el cliente pide en el momento, sin mesa ni mozo. Misma regla que el cobro
+   * de una mesa: el servidor calcula el importe con los precios del menú, la venta se guarda con sus pagos y la propina
+   * en UNA transacción, y con inventario se descuentan los insumos (o no pasa nada).
+   */
+  async counterCheckout(tenantId: string, actor: Actor, input: CounterCheckoutInput) {
+    const already = await this.findByCheckoutId(tenantId, input.checkoutId);
+    if (already) return already;
+
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) throw new NotFoundException('Negocio no encontrado');
+    this.assertRegisterOpen(tenant);
+
+    const globalPct = input.globalDiscount ?? 0;
+    const mayDiscount = actor.role === Role.ADMIN || (actor.role === Role.CASHIER && tenant.cashierDiscounts);
+    if (globalPct > 0 && !mayDiscount) {
+      throw new ForbiddenException(
+        actor.role === Role.CASHIER ? 'El negocio no habilitó los descuentos para el cajero' : 'Solo un administrador puede aplicar descuentos',
+      );
+    }
+
+    // El mismo producto tocado varias veces llega junto: se suma
+    const wanted = new Map<string, number>();
+    for (const line of input.items ?? []) wanted.set(line.menuItemId, (wanted.get(line.menuItemId) ?? 0) + line.quantity);
+    if (wanted.size === 0) throw new BadRequestException('El pedido está vacío');
+
+    const menu = await this.prisma.menuItem.findMany({ where: { tenantId, id: { in: [...wanted.keys()] } } });
+    if (menu.length !== wanted.size) {
+      throw new BadRequestException('Hay productos que ya no existen en el menú. Actualizá la pantalla.');
+    }
+
+    const inventory = tenant.inventoryEnabled ? await loadContext(this.prisma, tenantId) : null;
+    const charged: StockRequest[] = [];
+    let gross = 0;
+    let lineSum = 0;
+    let discountable = 0;
+    const lines = menu.map((item) => {
+      const quantity = wanted.get(item.id) as number;
+      const lineGross = round2(item.price * quantity);
+      gross += lineGross;
+      lineSum += lineGross;
+      if (!item.isPromo) discountable += lineGross;
+      let cost: number | null = null;
+      if (inventory) {
+        if (hasRecipe(inventory, item.id)) cost = unitCost(inventory, consumption(inventory, item.id, []));
+        charged.push({ menuItemId: item.id, quantity, optionIds: [] });
+      }
+      return {
+        name: item.name,
+        unitPrice: item.price,
+        quantity,
+        note: '',
+        isPromo: item.isPromo,
+        discountPct: 0,
+        lineTotal: lineGross,
+        unitCost: cost,
+        modifiers: [] as Prisma.InputJsonValue,
+      };
+    });
+    const globalDiscountAmount = round2((discountable * globalPct) / 100);
+    const totalAmount = round2(lineSum - globalDiscountAmount);
+    const grossTotal = round2(gross);
+
+    const tipAmount = this.resolveTip(tenant, input.tip, totalAmount);
+    const due = round2(totalAmount + tipAmount);
+    const payments = this.resolvePayments(input, due);
+    const paymentMethod =
+      payments.length === 1 ? payments[0].method : payments.length > 1 ? MIXED_PAYMENT : input.paymentMethod ?? 'efectivo';
+
+    try {
+      const sale = await this.prisma.$transaction(async (tx) => {
+        const fresh = await tx.tenant.findUniqueOrThrow({ where: { id: tenantId } });
+        this.assertRegisterOpen(fresh);
+
+        // Con inventario: nadie se lleva la última unidad que ya se pidió en una mesa o en otro cobro
+        if (inventory) {
+          await lockStock(tx, tenantId);
+          const ctx = await loadContext(tx, tenantId);
+          const avail = availableStock(ctx, await committedConsumption(tx, tenantId, ctx));
+          const shortages = findShortages(ctx, avail, charged);
+          if (shortages.length) throw new ConflictException(shortageMessage(shortages));
+        }
+
+        const created = await tx.sale.create({
+          data: {
+            tenantId,
+            checkoutId: input.checkoutId,
+            source: 'mostrador',
+            takeaway: !!input.takeaway,
+            tableName: 'Mostrador',
+            waiterName: '',
+            cashierName: actor.name,
+            paymentMethod,
+            grossTotal,
+            discountTotal: round2(grossTotal - totalAmount),
+            globalDiscountPct: globalPct,
+            totalAmount,
+            tipAmount,
+            commissionPct: 0, // no hay mozo: no hay comisión
+            registerId: fresh.openRegisterId,
+            items: { create: lines },
+            payments: { create: payments },
+          },
+          include: SALE_INCLUDE,
+        });
+        if (inventory) await deductForSale(tx, tenantId, inventory, charged, created.id, actor.name);
+        return created;
+      });
+      return mapSale(sale);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const existing = await this.findByCheckoutId(tenantId, input.checkoutId);
+        if (existing) return existing;
+      }
+      throw error;
+    }
+  }
+
   // ---- reglas ----
 
   private assertRegisterOpen(tenant: { requireOpenRegister: boolean; openRegisterId: string | null }) {
@@ -333,7 +477,7 @@ export class SalesService {
    * Arma los pagos y comprueba que sumen exactamente lo que hay que cobrar (cuenta + propina).
    * En efectivo calcula el vuelto a partir de lo que entregó el cliente.
    */
-  private resolvePayments(input: CheckoutInput, due: number) {
+  private resolvePayments(input: { paymentMethod?: string; payments?: PaymentInput[] }, due: number) {
     type Row = { method: string; amount: number; tendered: number | null; change: number };
 
     // Atajo: un solo método por el total

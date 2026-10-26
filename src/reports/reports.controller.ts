@@ -1,6 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { Role } from '@prisma/client';
-import { IsISO8601, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsIn, IsISO8601, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { Roles } from '../auth/roles.decorator';
 import { TenantId } from '../auth/tenant.decorator';
 import { ReportsService } from './reports.service';
@@ -17,6 +17,7 @@ class SalesReportDto {
   @IsOptional() @Matches(DAY, { message: 'from debe ser YYYY-MM-DD' }) from?: string;
   @IsOptional() @Matches(DAY, { message: 'to debe ser YYYY-MM-DD' }) to?: string;
   @IsOptional() @IsString() @MaxLength(64) tz?: string;
+  @IsOptional() @IsIn(['mesa', 'mostrador']) source?: 'mesa' | 'mostrador';
 }
 
 // Los reportes muestran la facturación del negocio: solo para el administrador.

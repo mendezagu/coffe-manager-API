@@ -6,6 +6,8 @@ export interface SalesReportQuery {
   from?: string; // YYYY-MM-DD, inclusive (en la zona `tz`)
   to?: string; // YYYY-MM-DD, inclusive
   tz?: string;
+  // solo las ventas de las mesas o solo las del mostrador (sin esto, todas)
+  source?: 'mesa' | 'mostrador';
 }
 
 const MAX_DAYS = 366;
@@ -91,7 +93,11 @@ export class ReportsService {
     });
 
     const sales = await this.prisma.sale.findMany({
-      where: { tenantId, date: { gte: startOfDay(from, tz), lt: startOfDay(addDays(to, 1), tz) } },
+      where: {
+        tenantId,
+        date: { gte: startOfDay(from, tz), lt: startOfDay(addDays(to, 1), tz) },
+        ...(query.source ? { source: query.source } : {}),
+      },
       include: { items: true, payments: true },
       orderBy: { date: 'asc' },
     });
@@ -102,6 +108,10 @@ export class ReportsService {
       byDay.set(day, { salesCount: 0, totalAmount: 0 });
     }
 
+    const bySource = { mesa: { salesCount: 0, totalAmount: 0 }, mostrador: { salesCount: 0, totalAmount: 0 } };
+    // ventas por hora del día (en la zona del negocio)
+    const byHour = Array.from({ length: 24 }, (_, hour) => ({ hour, salesCount: 0, totalAmount: 0 }));
+    const hourFmt = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', hourCycle: 'h23' });
     const byWaiter = new Map<string, { salesCount: number; totalAmount: number }>();
     const byPayment = new Map<string, { salesCount: number; totalAmount: number }>();
     const byTable = new Map<string, { salesCount: number; totalAmount: number }>();
@@ -135,8 +145,18 @@ export class ReportsService {
       grossTotal += sale.grossTotal;
       discountTotal += sale.discountTotal;
       add(byDay, localDay(sale.date, tz), sale.totalAmount);
-      add(byWaiter, sale.waiterName || 'Sin mozo', sale.totalAmount);
-      add(byTable, sale.tableName || 'Sin mesa', sale.totalAmount);
+      const counter = sale.source === 'mostrador';
+      const src = bySource[counter ? 'mostrador' : 'mesa'];
+      src.salesCount += 1;
+      src.totalAmount += sale.totalAmount;
+      const hourRow = byHour[Number(hourFmt.format(sale.date)) % 24];
+      hourRow.salesCount += 1;
+      hourRow.totalAmount += sale.totalAmount;
+      // El mostrador no tiene mesa ni mozo: no entra en "mesas más ocupadas" ni en los mozos
+      if (!counter) {
+        add(byWaiter, sale.waiterName || 'Sin mozo', sale.totalAmount);
+        add(byTable, sale.tableName || 'Sin mesa', sale.totalAmount);
+      }
       // Por método de pago se cuenta lo que realmente entró con cada uno (un cobro mixto suma en varios).
       // Las ventas viejas sin pagos registrados cuentan con su método único.
       if (sale.payments.length) for (const p of sale.payments) add(byPayment, p.method, p.amount);
@@ -156,7 +176,7 @@ export class ReportsService {
       }
       // La propina no es venta: va aparte y es del mozo
       tipsTotal += sale.tipAmount;
-      if (sale.tipAmount > 0) {
+      if (sale.tipAmount > 0 && !counter) {
         const key = sale.waiterName || 'Sin mozo';
         waiterTips.set(key, (waiterTips.get(key) ?? 0) + sale.tipAmount);
       }
@@ -213,6 +233,11 @@ export class ReportsService {
         profitMarginPct: knownRevenue > 0 ? round2(((knownRevenue - costTotal) / knownRevenue) * 100) : null,
         revenueWithoutCost: round2(unknownRevenue),
       },
+      bySource: {
+        mesa: { ...bySource.mesa, totalAmount: round2(bySource.mesa.totalAmount) },
+        mostrador: { ...bySource.mostrador, totalAmount: round2(bySource.mostrador.totalAmount) },
+      },
+      byHour: byHour.map((h) => ({ ...h, totalAmount: round2(h.totalAmount) })),
       byDay: [...byDay.entries()].map(([date, v]) => ({ date, ...v, totalAmount: round2(v.totalAmount) })),
       items: [...items.entries()]
         .map(([name, v]) => ({
