@@ -14,6 +14,7 @@ import {
   normalizeDocument,
   normalizeName,
 } from './vouchers.logic';
+import { hasFeature } from '../plans/plans';
 
 // Cuántos vouchers sin usar puede tener a la vez un mismo huésped (por documento) en un hotel
 export const MAX_ACTIVE_VOUCHERS_PER_GUEST = 3;
@@ -76,11 +77,13 @@ export class HotelsService {
       include: { tenant: true },
       orderBy: { tenant: { name: 'asc' } },
     });
+    // un restaurante cuyo plan no incluye hoteles no recibe vouchers
+    const eligible = partners.filter((p) => hasFeature(p.tenant.plan, 'hotels'));
     return {
       name: hotel.name,
       slug: hotel.slug,
       voucherValidDays: hotel.voucherValidDays,
-      restaurants: partners.map((p) => ({
+      restaurants: eligible.map((p) => ({
         id: p.tenantId,
         name: p.tenant.name,
         address: p.tenant.address,
@@ -89,7 +92,7 @@ export class HotelsService {
         discountPct: p.discountPct,
         conditions: p.conditions,
         // si el restaurante recibe reservas, la pantalla del hotel ofrece "Reservar mesa"
-        reservable: p.tenant.reservationsEnabled,
+        reservable: p.tenant.reservationsEnabled && hasFeature(p.tenant.plan, 'reservations'),
         maxParty: p.tenant.reservationMaxParty,
       })),
     };
@@ -171,7 +174,7 @@ export class HotelsService {
       include: { tenant: true },
     });
     if (!partner) throw new NotFoundException('Ese restaurante no está adherido a este hotel');
-    if (!partner.tenant.reservationsEnabled) throw new NotFoundException('Este restaurante no recibe reservas por acá');
+    if (!partner.tenant.reservationsEnabled || !hasFeature(partner.tenant.plan, 'reservations')) throw new NotFoundException('Este restaurante no recibe reservas por acá');
     return { hotel, tenant: partner.tenant };
   }
 
@@ -193,7 +196,7 @@ export class HotelsService {
       where: { hotelId: hotel.id, tenantId: input.tenantId, active: true },
       include: { tenant: true },
     });
-    if (!partner) throw new NotFoundException('Ese restaurante no está adherido a este hotel');
+    if (!partner || !hasFeature(partner.tenant.plan, 'hotels')) throw new NotFoundException('Ese restaurante no está adherido a este hotel');
 
     const guestName = input.guestName.trim().replace(/\s+/g, ' ');
     if (guestName.split(' ').filter((word) => word.length >= 2).length < 2) {

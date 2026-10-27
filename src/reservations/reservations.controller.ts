@@ -6,6 +6,7 @@ import { Roles } from '../auth/roles.decorator';
 import { TenantId } from '../auth/tenant.decorator';
 import { RateLimiter } from '../qr/rate-limit';
 import { ReservationsService } from './reservations.service';
+import { RequiresFeature } from '../plans/feature.guard';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const TIME = /^\d{1,2}:\d{2}$/;
@@ -116,6 +117,7 @@ export class ReservationsPublicController {
 // Pantalla "Reservas" del restaurante (administrador y cajero)
 // ---------------------------------------------------------------------------------------------
 @Roles(Role.ADMIN, Role.CASHIER)
+@RequiresFeature('reservations')
 @Controller('api/reservations')
 export class ReservationsController {
   constructor(private readonly reservations: ReservationsService) {}

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { hasFeature } from '../plans/plans';
 import { addDays, daysBetween, isValidTimeZone, localDay, startOfDay } from './zoned-date';
 
 export interface SalesReportQuery {
@@ -89,7 +90,7 @@ export class ReportsService {
 
     const commissionSettings = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { commissionEnabled: true, commissionPct: true },
+      select: { commissionEnabled: true, commissionPct: true, plan: true },
     });
 
     const sales = await this.prisma.sale.findMany({
@@ -216,7 +217,7 @@ export class ReportsService {
     return {
       range: { from, to, tz },
       // cómo está configurada hoy la comisión (para mostrar u ocultar esa parte de la pantalla)
-      commission: { enabled: commissionSettings?.commissionEnabled ?? false, pct: commissionSettings?.commissionPct ?? 0 },
+      commission: { enabled: (commissionSettings?.commissionEnabled ?? false) && hasFeature(commissionSettings?.plan ?? '', 'commission'), pct: commissionSettings?.commissionPct ?? 0 },
       summary: {
         salesCount: sales.length,
         totalAmount: round2(totalAmount),

@@ -4,6 +4,7 @@ import { IsIn, IsISO8601, IsOptional, IsString, Matches, MaxLength } from 'class
 import { Roles } from '../auth/roles.decorator';
 import { TenantId } from '../auth/tenant.decorator';
 import { ReportsService } from './reports.service';
+import { RequiresFeature } from '../plans/feature.guard';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -33,6 +34,7 @@ export class ReportsController {
     return this.reports.live(tenantId, query.tz);
   }
 
+  @RequiresFeature('advanced_reports')
   @Get('sales')
   sales(@TenantId() tenantId: string, @Query() query: SalesReportDto) {
     return this.reports.sales(tenantId, query);

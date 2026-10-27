@@ -42,8 +42,8 @@ describe('Hoteles: administración, alianzas y reporte', () => {
   beforeEach(async () => {
     await prisma.tenant.deleteMany({});
     await prisma.hotel.deleteMany({});
-    tenantId = (await prisma.tenant.create({ data: { name: 'Pizzería', requireOpenRegister: false } })).id;
-    otherTenantId = (await prisma.tenant.create({ data: { name: 'Parrilla', requireOpenRegister: false } })).id;
+    tenantId = (await prisma.tenant.create({ data: { plan: 'benefits', name: 'Pizzería', requireOpenRegister: false } })).id;
+    otherTenantId = (await prisma.tenant.create({ data: { plan: 'benefits', name: 'Parrilla', requireOpenRegister: false } })).id;
   });
 
   it('el dueño de la plataforma da de alta un hotel y vincula restaurantes', async () => {

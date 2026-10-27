@@ -53,7 +53,7 @@ describe('Hoteles · pedir un voucher por HTTP', () => {
   beforeEach(async () => {
     await prisma.hotel.deleteMany({ where: { slug: 'alpes-http' } });
     await prisma.tenant.deleteMany({ where: { name: 'Pizzería HTTP' } });
-    tenantId = (await prisma.tenant.create({ data: { name: 'Pizzería HTTP', requireOpenRegister: false } })).id;
+    tenantId = (await prisma.tenant.create({ data: { plan: 'benefits', name: 'Pizzería HTTP', requireOpenRegister: false } })).id;
     const hotel = await prisma.hotel.create({ data: { name: 'Hotel Alpes', slug: 'alpes-http', accessCode: 'ALPES-HTTP' } });
     await prisma.hotelPartner.create({ data: { hotelId: hotel.id, tenantId, discountPct: 10 } });
   });

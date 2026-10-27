@@ -9,6 +9,7 @@ import { HotelsAdminService } from './hotels-admin.service';
 import { PlatformTenantsService } from './platform-tenants.service';
 import { PlatformAuthService, PlatformUserGuard } from './platform-auth';
 import { HotelsService } from './hotels.service';
+import { RequiresFeature } from '../plans/feature.guard';
 
 class UpdatePartnershipDto {
   @IsOptional() @IsNumber() @Min(0.01) @Max(100) discountPct?: number;
@@ -150,6 +151,7 @@ export class HotelsPublicController {
 // ---------------------------------------------------------------------------------------------
 // Lado del restaurante (cajero / administrador)
 // ---------------------------------------------------------------------------------------------
+@RequiresFeature('hotels')
 @Controller('api/hotels')
 export class HotelsController {
   constructor(
@@ -195,6 +197,10 @@ class TenantDto {
   @IsOptional() @IsString() @MaxLength(100) adminName?: string;
   @IsString() @MinLength(8) @MaxLength(100) password: string;
   @IsOptional() @IsString() @MaxLength(20) plan?: string;
+}
+
+class TenantPlanDto {
+  @IsString() @MaxLength(20) plan: string;
 }
 
 class HotelUserDto {
@@ -266,6 +272,12 @@ export class HotelsPlatformController {
   @Post('tenants')
   createTenant(@Body() dto: TenantDto) {
     return this.tenantsAdmin.create(dto);
+  }
+
+  // Cambia el plan de un restaurante (Esencial / Pro / Beneficios)
+  @Patch('tenants/:id')
+  setTenantPlan(@Param('id') id: string, @Body() dto: TenantPlanDto) {
+    return this.tenantsAdmin.setPlan(id, dto.plan);
   }
 
   @Post('hotels/:id/users')

@@ -39,8 +39,8 @@ describe('Hoteles aliados: vouchers y descuento en el cobro', () => {
   beforeEach(async () => {
     await prisma.tenant.deleteMany({});
     await prisma.hotel.deleteMany({});
-    tenantId = (await prisma.tenant.create({ data: { name: 'Pizzería', requireOpenRegister: false } })).id;
-    otherTenantId = (await prisma.tenant.create({ data: { name: 'Parrilla', requireOpenRegister: false } })).id;
+    tenantId = (await prisma.tenant.create({ data: { plan: 'benefits', name: 'Pizzería', requireOpenRegister: false } })).id;
+    otherTenantId = (await prisma.tenant.create({ data: { plan: 'benefits', name: 'Parrilla', requireOpenRegister: false } })).id;
     hotelId = (await prisma.hotel.create({ data: { name: 'Hotel Alpes', slug: 'alpes', accessCode: 'ALPES-OCT' } })).id;
     await prisma.hotelPartner.create({ data: { hotelId, tenantId, discountPct: 10 } });
   });
@@ -50,7 +50,7 @@ describe('Hoteles aliados: vouchers y descuento en el cobro', () => {
 
   // Suma otro restaurante adherido al hotel
   const addPartner = async (name: string) => {
-    const t = await prisma.tenant.create({ data: { name, requireOpenRegister: false } });
+    const t = await prisma.tenant.create({ data: { plan: 'benefits', name, requireOpenRegister: false } });
     await prisma.hotelPartner.create({ data: { hotelId, tenantId: t.id, discountPct: 5 } });
     return t.id;
   };

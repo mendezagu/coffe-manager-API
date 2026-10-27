@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Payment, Prisma, Role, Sale, SaleItem } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { featureDeniedMessage, hasFeature } from '../plans/plans';
 import { newTablePin } from '../qr/qr.tokens';
 import { ValidVoucher, findUsableVoucher, redeemVoucher } from '../hotels/vouchers.logic';
 import { modifiersTotal, readSnapshot } from '../modifiers/modifiers.logic';
@@ -162,6 +163,7 @@ export class SalesService {
     // (no toca los ítems en promo) y solo se gasta si el cobro se completa.
     let voucher: ValidVoucher | null = null;
     if (input.voucherCode) {
+      if (!hasFeature(tenant.plan, 'hotels')) throw new ForbiddenException(featureDeniedMessage('hotels'));
       if (wantsDiscount) throw new BadRequestException('El voucher de hotel no se acumula con otros descuentos');
       voucher = await findUsableVoucher(this.prisma, tenantId, input.voucherCode);
     }
@@ -273,7 +275,7 @@ export class SalesService {
             totalAmount,
             tipAmount,
             // comisión del mozo: el porcentaje de hoy queda guardado en la venta (si se ajusta después, no cambia lo ya cobrado)
-            commissionPct: tenant.commissionEnabled ? tenant.commissionPct : 0,
+            commissionPct: tenant.commissionEnabled && hasFeature(tenant.plan, 'commission') ? tenant.commissionPct : 0,
             // hora en que se abrió la mesa; en mesas abiertas antes de registrarla, la de su orden más vieja
             // (las órdenes vienen de la más vieja a la más nueva)
             tableOpenedAt: isFull ? table.openedAt ?? table.orders[0]?.createdAt ?? null : null,

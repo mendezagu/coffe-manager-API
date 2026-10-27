@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PLAN_FEATURES } from '../plans/plans';
@@ -70,6 +70,15 @@ export class PlatformTenantsService {
       },
       admins: t.users.map((u) => ({ name: u.name, email: u.email, active: u.active })),
     }));
+  }
+
+  // Cambia el plan del restaurante: rige desde el próximo pedido a la API (lo que ya cargó no se borra)
+  async setPlan(id: string, plan: string) {
+    if (!(plan in PLAN_FEATURES)) throw new BadRequestException(`Plan desconocido. Planes: ${Object.keys(PLAN_FEATURES).join(', ')}`);
+    const tenant = await this.prisma.tenant.findUnique({ where: { id }, select: { id: true } });
+    if (!tenant) throw new NotFoundException('Restaurante no encontrado');
+    const updated = await this.prisma.tenant.update({ where: { id }, data: { plan }, select: { id: true, name: true, plan: true } });
+    return updated;
   }
 
   async create(input: CreateTenantInput) {

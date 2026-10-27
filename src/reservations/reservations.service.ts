@@ -17,6 +17,7 @@ import {
   slotTimes,
   timeToMin,
 } from './reservations.logic';
+import { hasFeature } from '../plans/plans';
 
 // Cuántas reservas vigentes (hoy o a futuro) puede tener un mismo teléfono en un restaurante
 export const MAX_ACTIVE_PER_PHONE = 3;
@@ -99,7 +100,7 @@ export class ReservationsService {
 
   async tenantBySlug(slug: string): Promise<Tenant> {
     const tenant = await this.prisma.tenant.findUnique({ where: { reservationSlug: slug } });
-    if (!tenant || !tenant.reservationsEnabled) throw new NotFoundException('Este restaurante no recibe reservas por acá');
+    if (!tenant || !tenant.reservationsEnabled || !hasFeature(tenant.plan, 'reservations')) throw new NotFoundException('Este restaurante no recibe reservas por acá');
     return tenant;
   }
 

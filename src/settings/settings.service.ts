@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Tenant } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { FEATURE_LABELS, featuresOf, hasFeature } from '../plans/plans';
+import { FEATURE_LABELS, PLAN_LABELS, featureDeniedMessage, PlanKey, featurePlans, featuresOf, hasFeature } from '../plans/plans';
 import { slugify, validateRules } from '../reservations/reservations.logic';
 import { LOGIN_CODE_RE, normalizeLoginCode } from '../auth/login-code';
 
@@ -79,7 +79,11 @@ export function mapSettings(t: Tenant) {
     // Plan y funciones que incluye. `splitKitchenBar` es lo que el negocio eligió; `splitActive`
     // es lo que realmente rige (elegido Y permitido por el plan).
     plan: t.plan,
+    planLabel: PLAN_LABELS[t.plan as PlanKey] ?? t.plan,
     features: featuresOf(t.plan),
+    // plan más bajo que incluye cada función (para las etiquetas de la app)
+    featurePlans: featurePlans(),
+    planLabels: PLAN_LABELS,
     // Cocina: lo que el negocio eligió. Separar cocina y barra solo rige si hay cocina, lo eligió y el plan lo permite.
     kitchenEnabled: t.kitchenEnabled,
     splitKitchenBar: t.splitKitchenBar,
@@ -92,9 +96,11 @@ export function mapSettings(t: Tenant) {
     tipSuggestedPct: t.tipSuggestedPct,
     // Comisión de mozos
     commissionEnabled: t.commissionEnabled,
+    commissionActive: t.commissionEnabled && hasFeature(t.plan, 'commission'),
     commissionPct: t.commissionPct,
     // Reservas
     reservationsEnabled: t.reservationsEnabled,
+    reservationsActive: t.reservationsEnabled && hasFeature(t.plan, 'reservations'),
     reservationSlug: t.reservationSlug,
     reservationOpenMin: t.reservationOpenMin,
     reservationCloseMin: t.reservationCloseMin,
@@ -165,6 +171,14 @@ export class SettingsService {
 
     if (input.inventoryEnabled === true && !hasFeature(current.plan, 'inventory')) {
       throw new ForbiddenException(`Tu plan no incluye "${FEATURE_LABELS.inventory}"`);
+    }
+
+    // Comisión y reservas: se pueden dejar como estaban, pero no activar si el plan no las incluye
+    if (input.commissionEnabled === true && !current.commissionEnabled && !hasFeature(current.plan, 'commission')) {
+      throw new ForbiddenException(featureDeniedMessage('commission'));
+    }
+    if (input.reservationsEnabled === true && !current.reservationsEnabled && !hasFeature(current.plan, 'reservations')) {
+      throw new ForbiddenException(featureDeniedMessage('reservations'));
     }
 
     if (input.qrEnabled === true && !hasFeature(current.plan, 'qr_ordering')) {

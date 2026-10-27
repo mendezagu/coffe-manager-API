@@ -71,7 +71,7 @@ describe('Portal del hotel y alta de restaurantes', () => {
     await prisma.tenant.deleteMany({});
     await prisma.hotel.deleteMany({});
     await prisma.platformUser.deleteMany({});
-    tenantId = (await prisma.tenant.create({ data: { name: 'Pizzería' } })).id;
+    tenantId = (await prisma.tenant.create({ data: { plan: 'benefits', name: 'Pizzería' } })).id;
     hotelId = (await admin.createHotel({ name: 'Hotel Alpes', slug: 'alpes', accessCode: 'ALPES-OCT' })).id;
     otherHotelId = (await admin.createHotel({ name: 'Hotel Mar', slug: 'mar', accessCode: 'MAR-OCT' })).id;
     await admin.setPartner(hotelId, { tenantId, discountPct: 10 });

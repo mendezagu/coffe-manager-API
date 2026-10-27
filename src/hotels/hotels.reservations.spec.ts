@@ -35,7 +35,7 @@ describe('Hoteles: reservar mesa desde la pantalla del huésped', () => {
     await prisma.hotel.deleteMany({});
     tenantId = (
       await prisma.tenant.create({
-        data: {
+        data: { plan: 'benefits',
           name: 'Pizzería',
           requireOpenRegister: false,
           reservationsEnabled: true,
@@ -101,7 +101,7 @@ describe('Hoteles: reservar mesa desde la pantalla del huésped', () => {
   });
 
   it('no deja reservar en un restaurante que no es del hotel o que apagó las reservas', async () => {
-    const other = (await prisma.tenant.create({ data: { name: 'Parrilla', requireOpenRegister: false, reservationsEnabled: true } })).id;
+    const other = (await prisma.tenant.create({ data: { plan: 'benefits', name: 'Parrilla', requireOpenRegister: false, reservationsEnabled: true } })).id;
     await expect(reserve({ tenantId: other })).rejects.toThrow(NotFoundException);
 
     await prisma.tenant.update({ where: { id: tenantId }, data: { reservationsEnabled: false } });
