@@ -200,7 +200,9 @@ class TenantDto {
 }
 
 class TenantPlanDto {
-  @IsString() @MaxLength(20) plan: string;
+  @IsOptional() @IsString() @MaxLength(20) plan?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) @MaxLength(40, { each: true }) addons?: string[];
+  @IsOptional() @IsString() @MaxLength(20) salesMode?: string;
 }
 
 class HotelUserDto {
@@ -274,10 +276,10 @@ export class HotelsPlatformController {
     return this.tenantsAdmin.create(dto);
   }
 
-  // Cambia el plan de un restaurante (Esencial / Pro / Beneficios)
+  // Cambia el plan de un restaurante (Takeaway / Esencial / Pro / Beneficios), sus extras y su modo de venta
   @Patch('tenants/:id')
   setTenantPlan(@Param('id') id: string, @Body() dto: TenantPlanDto) {
-    return this.tenantsAdmin.setPlan(id, dto.plan);
+    return this.tenantsAdmin.update(id, dto);
   }
 
   @Post('hotels/:id/users')

@@ -3,7 +3,7 @@
  *
  *   npm run tenant:create -- --name "La Pizzería" --email admin@pizzeria.com --password "clave-larga-123"
  *
- * Opcional: --adminName "Nombre del admin"  --plan basic|pro   (por defecto: pro)
+ * Opcional: --adminName "Nombre del admin"  --plan takeaway|basic|pro|benefits   (por defecto: pro)
  */
 import { PrismaClient, Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
@@ -45,6 +45,7 @@ async function main() {
         name: name.trim(),
         loginCode,
         plan,
+        salesMode: plan === 'takeaway' ? 'counter' : 'both',
         users: {
           create: { email, name: adminName, role: Role.ADMIN, passwordHash: await bcrypt.hash(password, 10) },
         },

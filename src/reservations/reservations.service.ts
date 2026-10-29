@@ -100,7 +100,7 @@ export class ReservationsService {
 
   async tenantBySlug(slug: string): Promise<Tenant> {
     const tenant = await this.prisma.tenant.findUnique({ where: { reservationSlug: slug } });
-    if (!tenant || !tenant.reservationsEnabled || !hasFeature(tenant.plan, 'reservations')) throw new NotFoundException('Este restaurante no recibe reservas por acá');
+    if (!tenant || !tenant.reservationsEnabled || !hasFeature(tenant, 'reservations')) throw new NotFoundException('Este restaurante no recibe reservas por acá');
     return tenant;
   }
 

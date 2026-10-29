@@ -534,4 +534,28 @@ describe('Pedido por QR', () => {
       expect(((await qr.inbox(tenantId)) as any).active).toBe(false);
     });
   });
+
+  describe('platos ocultos de la carta', () => {
+    it('un plato oculto no se muestra en la carta del QR ni en la carta online, pero el resto sí', async () => {
+      await prisma.menuItem.update({ where: { id: cola.id }, data: { visibleInMenu: false } });
+      const info: any = await qr.info(table1.qrToken!, ip(), undefined);
+      expect(info.menu.items.map((i: any) => i.name)).toEqual(['Hamburguesa']);
+
+      await prisma.tenant.update({ where: { id: tenantId }, data: { menuPublicEnabled: true, menuSlug: 'bar-a' } });
+      const carta: any = await qr.publicCarta('bar-a', ip());
+      expect(carta.menu.items.map((i: any) => i.name)).toEqual(['Hamburguesa']);
+    });
+
+    it('un plato oculto tampoco se puede pedir, aunque alguien conozca su id', async () => {
+      await prisma.menuItem.update({ where: { id: cola.id }, data: { visibleInMenu: false } });
+      await expect(sendCola()).rejects.toThrow('ya no está en la carta');
+      expect(await prisma.qrOrderRequest.count({ where: { tableId: table1.id } })).toBe(0);
+    });
+
+    it('al volver a mostrarlo, se puede pedir de nuevo', async () => {
+      await prisma.menuItem.update({ where: { id: cola.id }, data: { visibleInMenu: false } });
+      await prisma.menuItem.update({ where: { id: cola.id }, data: { visibleInMenu: true } });
+      await expect(sendCola()).resolves.toBeDefined();
+    });
+  });
 });

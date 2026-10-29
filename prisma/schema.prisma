@@ -44,6 +44,15 @@ model MenuItem {
   isExample Boolean @default(false)
   // fijado como favorito: aparece primero en la caja del mostrador
   isFavorite Boolean @default(false)
+  // false = el plato no se muestra en la carta online ni en el pedido por QR (el personal lo sigue viendo)
+  visibleInMenu Boolean @default(true)
+  // foto del plato: clave del archivo en el almacenamiento (la dirección pública se arma al mostrarla)
+  imageKey   String?
+  // carta: descripción corta, etiqueta sobre la foto (con su color) y si va en "Destacados"
+  description String?
+  badge       String?
+  badgeColor  String  @default("terracotta")
+  featured    Boolean @default(false)
   orders   Order[]
 
   // opcional: un plato sin categoría se trata como de cocina
@@ -51,6 +60,7 @@ model MenuItem {
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   modifierGroups MenuItemModifierGroup[]
+  optionPrices   MenuItemOptionPrice[]
   ingredients    MenuItemIngredient[]
 
   tenantId String
@@ -194,6 +204,10 @@ model Tenant {
 
   // Plan contratado: define qué funciones están disponibles (ver src/plans/plans.ts).
   plan            String  @default("pro")
+  // Funciones sueltas que se suman al plan (ej: Mostrador en un plan Esencial). Las pone la Consola.
+  addons          String[] @default([])
+  // Cómo vende el negocio: both | counter | tables. Solo define qué partes de la app se muestran.
+  salesMode       String  @default("both")
   // El negocio elige si manda todo a cocina (false) o separa cocina y barra (true).
   // Solo tiene efecto si el plan incluye la función.
   // Pantalla de cocina (estados de los pedidos, comandas): el negocio decide si la usa. Apagada por defecto.
@@ -218,6 +232,16 @@ model Tenant {
   timezone String @default("America/Argentina/Buenos_Aires")
 
   // Reservas: el negocio las habilita y define sus reglas. La página pública es /reservar/<reservationSlug>.
+  // Carta online: una dirección pública (/carta/<menuSlug>) para ver el menú sin pedir ni código
+  // imágenes de la carta: portada (banda de arriba) y fondo de la página, guardadas como clave del archivo
+  coverImageKey      String?
+  backgroundImageKey String?
+  // cuánto se ve cada imagen (0 a 100); null = automático (lo decide el sistema)
+  coverIntensity      Int?
+  backgroundIntensity Int?
+  menuPublicEnabled Boolean @default(false)
+  menuSlug          String? @unique
+
   reservationsEnabled    Boolean @default(false)
   reservationSlug        String? @unique
   reservationOpenMin     Int     @default(720) // primer horario reservable (minutos desde la medianoche; 720 = 12:00)
@@ -370,6 +394,10 @@ model Category {
   destination Destination @default(KITCHEN)
   // true = viene de la plantilla de ejemplo y todavía no se tocó
   isExample   Boolean     @default(false)
+  // carta: subtítulo de la sección, texto corto a la derecha del título y cómo se muestran sus platos (grid | list | hero)
+  subtitle    String?
+  tagline     String?
+  layout      String      @default("grid")
 
   menuItems MenuItem[]
 
@@ -417,6 +445,7 @@ model ModifierOption {
   active     Boolean @default(true)
 
   ingredients ModifierOptionIngredient[]
+  itemPrices  MenuItemOptionPrice[]
 
   @@index([groupId])
   @@map("modifier_options")
@@ -435,6 +464,23 @@ model MenuItemModifierGroup {
   @@id([menuItemId, groupId])
   @@index([groupId])
   @@map("menu_item_modifier_groups")
+}
+
+// Precio propio de una opción en un plato: "Lágrima" Chico $3800, Jarro $4000... mientras otro plato
+// tiene otros precios para los mismos tamaños. Guarda el PRECIO FINAL del plato con esa opción
+// (sin fila, la opción suma su priceDelta general al precio del plato).
+model MenuItemOptionPrice {
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  optionId String
+  option   ModifierOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  price Float
+
+  @@id([menuItemId, optionId])
+  @@index([optionId])
+  @@map("menu_item_option_prices")
 }
 
 // Un pago de una venta. Una cuenta puede pagarse con varios métodos (pago mixto) y,

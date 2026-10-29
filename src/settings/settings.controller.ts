@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Post, Put } from '@nestjs/common';
 import { Role } from '@prisma/client';
-import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { Roles } from '../auth/roles.decorator';
 import { TenantId } from '../auth/tenant.decorator';
 import { SettingsService } from './settings.service';
@@ -33,6 +33,11 @@ class UpdateSettingsDto {
   @IsOptional() @IsInt() @Min(0) @Max(100) tipSuggestedPct?: number;
   @IsOptional() @IsBoolean() commissionEnabled?: boolean;
   @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100) commissionPct?: number;
+  @IsOptional() @IsBoolean() menuPublicEnabled?: boolean;
+  @IsOptional() @IsIn(['both', 'counter', 'tables']) salesMode?: string;
+  // null = automática
+  @IsOptional() @IsInt() @Min(0) @Max(100) coverIntensity?: number | null;
+  @IsOptional() @IsInt() @Min(0) @Max(100) backgroundIntensity?: number | null;
   @IsOptional() @IsBoolean() reservationsEnabled?: boolean;
   @IsOptional() @IsInt() @Min(0) @Max(1439) reservationOpenMin?: number;
   @IsOptional() @IsInt() @Min(0) @Max(1439) reservationCloseMin?: number;

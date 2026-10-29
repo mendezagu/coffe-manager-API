@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Req } from '@nestjs/common';
 import { Type } from 'class-transformer';
+import { RequiresFeature } from '../plans/feature.guard';
 import {
   ArrayMaxSize,
   IsArray,
@@ -103,7 +104,8 @@ export class CheckoutController {
   }
 }
 
-// Venta por mostrador: se cobra sin mesa
+// Venta por mostrador: se cobra sin mesa (la incluye el plan Pro en adelante, el plan Takeaway o un extra)
+@RequiresFeature('counter_sales')
 @Controller('api/counter')
 export class CounterController {
   constructor(private readonly sales: SalesService) {}

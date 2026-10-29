@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
 import { Destination, Role } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEnum, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { CATEGORY_LAYOUTS } from '../common/menu-fields';
 import { Roles } from '../auth/roles.decorator';
 import { TenantId } from '../auth/tenant.decorator';
 import { CategoriesService } from './categories.service';
@@ -8,11 +9,17 @@ import { CategoriesService } from './categories.service';
 class CreateCategoryDto {
   @IsString() @MaxLength(60) name: string;
   @IsOptional() @IsEnum(Destination) destination?: Destination;
+  @IsOptional() @IsString() @MaxLength(60) subtitle?: string;
+  @IsOptional() @IsString() @MaxLength(30) tagline?: string;
+  @IsOptional() @IsIn(CATEGORY_LAYOUTS as unknown as string[]) layout?: string;
 }
 
 class UpdateCategoryDto {
   @IsOptional() @IsString() @MaxLength(60) name?: string;
   @IsOptional() @IsEnum(Destination) destination?: Destination;
+  @IsOptional() @IsString() @MaxLength(60) subtitle?: string;
+  @IsOptional() @IsString() @MaxLength(30) tagline?: string;
+  @IsOptional() @IsIn(CATEGORY_LAYOUTS as unknown as string[]) layout?: string;
 }
 
 @Controller('api/categories')

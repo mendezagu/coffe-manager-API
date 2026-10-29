@@ -12,11 +12,12 @@ import { Prisma, QrOrderRequest, Tenant } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { hasFeature, FEATURE_LABELS } from '../plans/plans';
 import { TablesService } from '../tables/tables.service';
-import { ModifierSnapshot, modifiersTotal, readSnapshot, resolveModifiers, round2 } from '../modifiers/modifiers.logic';
+import { ModifierSnapshot, effectiveDelta, modifiersTotal, offeredOptions, readSnapshot, resolveModifiers, round2 } from '../modifiers/modifiers.logic';
 import { availableStock, committedConsumption, loadContext, maxUnits } from '../inventory/inventory.logic';
 import { newQrToken, newTablePin, samePin } from './qr.tokens';
 import { RateLimiter } from './rate-limit';
 import { RealtimeService } from '../realtime/realtime.service';
+import { publicImageUrl } from '../storage/object-storage';
 
 // ---- límites (pensados para un local con una mesa por QR y clientes que no se conocen) ----
 export const MAX_PENDING_PER_TABLE = 3; // pedidos esperando confirmación en una misma mesa
@@ -49,7 +50,7 @@ export interface CreateRequestInput {
   items: { menuItemId: string; quantity: number; note?: string; optionIds?: string[] }[];
 }
 
-const qrActive = (t: Pick<Tenant, 'qrEnabled' | 'plan'>) => t.qrEnabled && hasFeature(t.plan, 'qr_ordering');
+const qrActive = (t: Pick<Tenant, 'qrEnabled' | 'plan' | 'addons'>) => t.qrEnabled && hasFeature(t, 'qr_ordering');
 
 function readItems(value: unknown): StoredItem[] {
   return Array.isArray(value) ? (value as StoredItem[]) : [];
@@ -110,7 +111,17 @@ export class QrService {
     ipLimiter.hit(ip);
     const ctx = await this.resolve(token);
     const { table, tenant } = ctx;
-    const business = { name: tenant.name, logoUrl: tenant.logoUrl, brandColor: tenant.brandColor, currencyCode: tenant.currencyCode, locale: tenant.locale };
+    const business = {
+      name: tenant.name,
+      logoUrl: tenant.logoUrl,
+      brandColor: tenant.brandColor,
+      currencyCode: tenant.currencyCode,
+      locale: tenant.locale,
+      coverUrl: publicImageUrl(tenant.coverImageKey),
+      backgroundUrl: publicImageUrl(tenant.backgroundImageKey),
+      coverIntensity: tenant.coverIntensity,
+      backgroundIntensity: tenant.backgroundIntensity,
+    };
     const base = {
       business,
       table: { name: table.name },
@@ -124,14 +135,37 @@ export class QrService {
     return { ...base, pinOk: true, menu: await this.publicMenu(tenant) };
   }
 
+  // Carta online: la misma carta que ve quien escanea el QR de una mesa, pero sin mesa, sin código y sin pedir.
+  // Solo existe si el negocio la activó (y por eso no revela si un nombre de local existe o no).
+  async publicCarta(slug: string, ip: string) {
+    ipLimiter.hit(ip);
+    const tenant = await this.prisma.tenant.findUnique({ where: { menuSlug: String(slug).toLowerCase() } });
+    if (!tenant || !tenant.menuPublicEnabled) throw new NotFoundException('Esta carta no está disponible');
+    return {
+      business: {
+        name: tenant.name,
+        logoUrl: tenant.logoUrl,
+        brandColor: tenant.brandColor,
+        currencyCode: tenant.currencyCode,
+        locale: tenant.locale,
+        coverUrl: publicImageUrl(tenant.coverImageKey),
+        backgroundUrl: publicImageUrl(tenant.backgroundImageKey),
+        coverIntensity: tenant.coverIntensity,
+        backgroundIntensity: tenant.backgroundIntensity,
+      },
+      menu: await this.publicMenu(tenant),
+    };
+  }
+
   // La carta pública: solo nombre, precio y opciones. Sin costos, recetas ni existencias exactas.
   private async publicMenu(tenant: Tenant) {
     const [categories, items] = await Promise.all([
       this.prisma.category.findMany({ where: { tenantId: tenant.id }, orderBy: [{ position: 'asc' }, { name: 'asc' }] }),
       this.prisma.menuItem.findMany({
-        where: { tenantId: tenant.id },
+        where: { tenantId: tenant.id, visibleInMenu: true },
         orderBy: { name: 'asc' },
         include: {
+          optionPrices: true,
           modifierGroups: {
             orderBy: { position: 'asc' },
             include: { group: { include: { options: { where: { active: true }, orderBy: [{ position: 'asc' }, { name: 'asc' }] } } } },
@@ -142,7 +176,7 @@ export class QrService {
 
     // Con inventario y "bloquear pedidos sin stock", lo que no se puede preparar sale como "Agotado"
     let soldOut: (id: string) => boolean = () => false;
-    if (tenant.inventoryEnabled && hasFeature(tenant.plan, 'inventory') && tenant.blockOutOfStock) {
+    if (tenant.inventoryEnabled && hasFeature(tenant, 'inventory') && tenant.blockOutOfStock) {
       const ctx = await loadContext(this.prisma, tenant.id);
       const avail = availableStock(ctx, await committedConsumption(this.prisma, tenant.id, ctx));
       soldOut = (id) => {
@@ -152,23 +186,28 @@ export class QrService {
     }
 
     return {
-      categories: categories.map((c) => ({ id: c.id, name: c.name })),
+      categories: categories.map((c) => ({ id: c.id, name: c.name, subtitle: c.subtitle, tagline: c.tagline, layout: c.layout })),
       items: items.map((i) => ({
         id: i.id,
         name: i.name,
         price: i.price,
         categoryId: i.categoryId,
         isPromo: i.isPromo,
+        imageUrl: publicImageUrl(i.imageKey),
+        description: i.description,
+        badge: i.badge,
+        badgeColor: i.badgeColor,
+        featured: i.featured,
         soldOut: soldOut(i.id),
         groups: i.modifierGroups
-          .map((l) => l.group)
+          .map((l) => ({ ...l.group, options: offeredOptions(l.group.options, new Map(i.optionPrices.map((p) => [p.optionId, p.price]))) }))
           .filter((g) => g.options.length > 0)
           .map((g) => ({
             id: g.id,
             name: g.name,
             selection: g.selection,
             required: g.required,
-            options: g.options.map((o) => ({ id: o.id, name: o.name, priceDelta: o.priceDelta })),
+            options: g.options.map((o) => ({ id: o.id, name: o.name, priceDelta: effectiveDelta(i.price, o.priceDelta, i.optionPrices.find((p) => p.optionId === o.id)?.price) })),
           })),
       })),
     };
@@ -207,7 +246,7 @@ export class QrService {
       // El precio lo decide el servidor: del celular solo llegan ids, cantidades y aclaraciones
       const stored: StoredItem[] = [];
       for (const line of input.items) {
-        const menuItem = await tx.menuItem.findFirst({ where: { id: line.menuItemId, tenantId: tenant.id } });
+        const menuItem = await tx.menuItem.findFirst({ where: { id: line.menuItemId, tenantId: tenant.id, visibleInMenu: true } });
         if (!menuItem) throw new BadRequestException('Un plato del pedido ya no está en la carta. Actualizá la página.');
         const modifiers = await resolveModifiers(tx, tenant.id, menuItem.id, menuItem.name, line.optionIds ?? []);
         stored.push({
@@ -455,7 +494,7 @@ export class QrService {
     });
     return {
       active: qrActive(tenant),
-      planIncluded: hasFeature(tenant.plan, 'qr_ordering'),
+      planIncluded: hasFeature(tenant, 'qr_ordering'),
       requirePin: tenant.qrRequirePin,
       tables: tables.map((t) => ({
         id: t.id,
@@ -489,7 +528,7 @@ export class QrService {
   // Los códigos solo se crean o cambian si el plan lo incluye Y el negocio activó el pedido por QR
   private async requireActive(tenantId: string) {
     const tenant = await this.prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } });
-    if (!hasFeature(tenant.plan, 'qr_ordering')) {
+    if (!hasFeature(tenant, 'qr_ordering')) {
       throw new ForbiddenException(`Tu plan no incluye "${FEATURE_LABELS.qr_ordering}"`);
     }
     if (!tenant.qrEnabled) {

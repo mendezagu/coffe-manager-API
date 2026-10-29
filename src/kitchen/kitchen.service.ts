@@ -19,7 +19,7 @@ export class KitchenService {
    */
   async isSplit(tenantId: string): Promise<boolean> {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
-    return !!tenant && tenant.kitchenEnabled && tenant.splitKitchenBar && hasFeature(tenant.plan, 'kitchen_bar_split');
+    return !!tenant && tenant.kitchenEnabled && tenant.splitKitchenBar && hasFeature(tenant, 'kitchen_bar_split');
   }
 
   // La cocina es opcional: si el negocio no la habilitó en "Mi negocio", no hay pantalla ni estados de pedido.

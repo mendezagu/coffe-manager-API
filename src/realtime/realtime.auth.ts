@@ -47,7 +47,7 @@ export class RealtimeAuth {
 
   private async customer(qrToken: string): Promise<SocketAccess | null> {
     const table = await this.prisma.table.findUnique({ where: { qrToken }, include: { tenant: true } });
-    if (!table || !table.tenant.qrEnabled || !hasFeature(table.tenant.plan, 'qr_ordering')) return null;
+    if (!table || !table.tenant.qrEnabled || !hasFeature(table.tenant, 'qr_ordering')) return null;
     return { rooms: [customersRoom(table.tenantId)] };
   }
 }

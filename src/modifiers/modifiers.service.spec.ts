@@ -294,4 +294,121 @@ describe('Modificadores', () => {
       expect(lines[0].modifiers).toEqual(['Grande', 'Shot extra']);
     });
   });
+
+  describe('precio propio por plato (tamaños con otros precios)', () => {
+    it('cada plato fija el precio final de cada tamaño y el servidor lo cobra', async () => {
+      const s = await cafeSetup();
+      const lagrima = await menu.create(tenantId, {
+        name: 'Lágrima',
+        price: 3800,
+        modifierGroupIds: [s.size._id],
+        optionPrices: { [s.chico]: 3800, [s.grande]: 4500 },
+      });
+      expect(lagrima.optionPrices).toEqual({ [s.chico]: 3800, [s.grande]: 4500 });
+
+      const result = await tables.addItems(tenantId, s.table.id, [{ id: lagrima._id, quantity: 1, modifiers: [s.grande] }]);
+      expect(result.orders[0].modifiers.map((m) => [m.name, m.priceDelta])).toEqual([['Grande', 700]]);
+
+      // el otro plato sigue con el precio general del grupo (Grande suma 500)
+      const other = await tables.addItems(tenantId, s.table.id, [{ id: s.cafe._id, quantity: 1, modifiers: [s.grande] }]);
+      expect(other.orders.at(-1)!.modifiers.map((m) => m.priceDelta)).toEqual([500]);
+    });
+
+    it('si cambia el precio base, los tamaños con precio propio mantienen su precio final', async () => {
+      const s = await cafeSetup();
+      const item = await menu.create(tenantId, { name: 'Lágrima', price: 3800, modifierGroupIds: [s.size._id], optionPrices: { [s.chico]: 3800, [s.grande]: 4500 } });
+      await menu.update(tenantId, item._id, { price: 4000 });
+      const result = await tables.addItems(tenantId, s.table.id, [{ id: item._id, quantity: 1, modifiers: [s.grande] }]);
+      // el precio final de Grande sigue en 4500: con base 4000 suma 500
+      expect(result.orders[0].modifiers[0].priceDelta).toBe(500);
+    });
+
+    it('el tamaño sin precio propio no se ofrece en ese plato', async () => {
+      const s = await cafeSetup();
+      const item = await menu.create(tenantId, { name: 'Lágrima', price: 3800, modifierGroupIds: [s.size._id], optionPrices: { [s.chico]: 3800 } });
+      await expect(tables.addItems(tenantId, s.table.id, [{ id: item._id, quantity: 1, modifiers: [s.grande] }])).rejects.toThrow(BadRequestException);
+      await expect(tables.addItems(tenantId, s.table.id, [{ id: item._id, quantity: 1, modifiers: [s.chico] }])).resolves.toBeDefined();
+    });
+
+    it('valida: solo grupos obligatorios de una opción que el plato ofrece, y precios válidos', async () => {
+      const s = await cafeSetup();
+      const base = { name: 'Lágrima', price: 3800, modifierGroupIds: [s.size._id, s.extras._id] };
+      await expect(menu.create(tenantId, { ...base, optionPrices: { [s.almendras]: 500 } })).rejects.toThrow(BadRequestException); // extra opcional
+      await expect(menu.create(tenantId, { ...base, optionPrices: { [s.chico]: -1 } })).rejects.toThrow(BadRequestException);
+      await expect(menu.create(tenantId, { ...base, optionPrices: { [s.chico]: 'abc' } })).rejects.toThrow(BadRequestException);
+      await expect(menu.create(tenantId, { ...base, modifierGroupIds: [], optionPrices: { [s.chico]: 100 } })).rejects.toThrow(BadRequestException); // no ofrece el grupo
+      const foreign = await modifiers.create(otherTenantId, { name: 'Tamaño', selection: ModifierSelection.SINGLE, required: true, options: [{ name: 'X' }] });
+      await expect(menu.create(tenantId, { ...base, optionPrices: { [foreign.options[0]._id]: 100 } })).rejects.toThrow(BadRequestException);
+    });
+
+    it('al dejar de ofrecer el grupo se borran sus precios propios', async () => {
+      const s = await cafeSetup();
+      const item = await menu.create(tenantId, { name: 'Lágrima', price: 3800, modifierGroupIds: [s.size._id], optionPrices: { [s.chico]: 3800, [s.grande]: 4500 } });
+      const updated = await menu.update(tenantId, item._id, { modifierGroupIds: [] });
+      expect(updated!.optionPrices).toEqual({});
+      expect(await prisma.menuItemOptionPrice.count()).toBe(0);
+    });
+  });
+
+  describe('importar una planilla de tamaños', () => {
+    const sizes = ['Chico', 'Jarro', 'Doble', 'XXL'];
+
+    it('crea el grupo, los platos y las categorías, con el precio base al más barato', async () => {
+      const r = await menu.importSizes(tenantId, {
+        sizes,
+        rows: [
+          { name: 'Lagrima', category: 'Cafés', prices: [3800, 4000, 4500, 5900] },
+          { name: 'Flat white', category: 'Cafés', prices: [3800, 4000, 5100, 6500] },
+          { name: 'Medialuna', category: 'Panadería', prices: [1500, null, null, null] },
+        ],
+      });
+      expect(r).toMatchObject({ created: 3, updated: 0, total: 3 });
+
+      const items = await menu.findAll(tenantId);
+      const lagrima = items.find((i) => i.name === 'Lagrima')!;
+      expect(lagrima.price).toBe(3800);
+      expect(Object.values(lagrima.optionPrices).sort()).toEqual([3800, 4000, 4500, 5900]);
+      const medialuna = items.find((i) => i.name === 'Medialuna')!;
+      expect(medialuna.modifierGroupIds).toEqual([]); // un solo precio: sin tamaños
+      expect(await prisma.category.count({ where: { tenantId } })).toBe(2);
+
+      const group = (await modifiers.findAll(tenantId))[0];
+      expect(group.required).toBe(true);
+      expect(group.options.map((o) => o.name)).toEqual(sizes);
+    });
+
+    it('volver a cargarla actualiza por nombre (sin duplicar) y deja afuera los tamaños en blanco', async () => {
+      const rows = [{ name: 'Lagrima', prices: [3800, 4000, 4500, 5900] }];
+      await menu.importSizes(tenantId, { sizes, rows });
+      const again = await menu.importSizes(tenantId, { sizes, rows: [{ name: ' lágrima ', prices: [4000, 4200, null, null] }] });
+      expect(again).toMatchObject({ created: 0, updated: 1 });
+
+      const [item] = await menu.findAll(tenantId);
+      expect(await prisma.menuItem.count({ where: { tenantId } })).toBe(1);
+      expect(item.price).toBe(4000);
+      expect(Object.values(item.optionPrices).sort()).toEqual([4000, 4200]);
+
+      // un tamaño sin precio en la planilla no se puede pedir; los otros se cobran por su precio final
+      const group = (await modifiers.findAll(tenantId))[0];
+      const opt = (n: string) => group.options.find((o) => o.name === n)!._id;
+      const table = await prisma.table.create({ data: { tenantId, name: 'Mesa 1', available: false } });
+      await expect(tables.addItems(tenantId, table.id, [{ id: item._id, quantity: 1, modifiers: [opt('XXL')] }])).rejects.toThrow(BadRequestException);
+      const ok = await tables.addItems(tenantId, table.id, [{ id: item._id, quantity: 1, modifiers: [opt('Jarro')] }]);
+      expect(ok.orders[0].modifiers[0].priceDelta).toBe(200);
+    });
+
+    it('valida la planilla', async () => {
+      await expect(menu.importSizes(tenantId, { sizes: [], rows: [{ name: 'A', prices: [] }] })).rejects.toThrow(BadRequestException);
+      await expect(menu.importSizes(tenantId, { sizes: ['A', 'a'], rows: [{ name: 'X', prices: [1, 2] }] })).rejects.toThrow(BadRequestException);
+      await expect(menu.importSizes(tenantId, { sizes, rows: [] })).rejects.toThrow(BadRequestException);
+      await expect(menu.importSizes(tenantId, { sizes, rows: [{ name: 'X', prices: [null, null] }] })).rejects.toThrow(/ningún precio/);
+      await expect(menu.importSizes(tenantId, { sizes, rows: [{ name: 'X', prices: [-5, 1] }] })).rejects.toThrow(BadRequestException);
+      expect(await prisma.menuItem.count({ where: { tenantId } })).toBe(0); // nada a medias
+    });
+
+    it('no pisa un grupo con ese nombre que no sea de una opción obligatoria', async () => {
+      await modifiers.create(tenantId, { name: 'Tamaño', selection: ModifierSelection.MULTIPLE, options: [{ name: 'A' }] });
+      await expect(menu.importSizes(tenantId, { sizes, rows: [{ name: 'X', prices: [1, 2] }] })).rejects.toThrow(BadRequestException);
+    });
+  });
 });

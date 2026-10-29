@@ -1,5 +1,6 @@
 import { MenuItem, Order, Sector, Table, Waiter } from '@prisma/client';
 import { readSnapshot } from '../modifiers/modifiers.logic';
+import { publicImageUrl } from '../storage/object-storage';
 
 type OrderWithMenuItem = Order & { menuItem?: MenuItem | null };
 type TableWithRelations = Table & {
@@ -9,7 +10,7 @@ type TableWithRelations = Table & {
   sector?: Sector | null;
 };
 
-export function mapMenuItem(item: MenuItem & { modifierGroups?: { groupId: string }[] }) {
+export function mapMenuItem(item: MenuItem & { modifierGroups?: { groupId: string }[]; optionPrices?: { optionId: string; price: number }[] }) {
   return {
     _id: item.id,
     name: item.name,
@@ -17,9 +18,17 @@ export function mapMenuItem(item: MenuItem & { modifierGroups?: { groupId: strin
     quantity: item.quantity,
     isPromo: item.isPromo,
     isFavorite: item.isFavorite,
+    visibleInMenu: item.visibleInMenu,
+    imageUrl: publicImageUrl(item.imageKey),
+    description: item.description,
+    badge: item.badge,
+    badgeColor: item.badgeColor,
+    featured: item.featured,
     categoryId: item.categoryId ?? null,
     // ids de los modificadores que ofrece este plato (el detalle está en /api/modifiers)
     modifierGroupIds: (item.modifierGroups ?? []).map((g) => g.groupId),
+    // precio propio de algunas opciones en este plato (ej: cada tamaño): { idOpción: precio final }
+    optionPrices: Object.fromEntries((item.optionPrices ?? []).map((p) => [p.optionId, p.price])),
   };
 }
 

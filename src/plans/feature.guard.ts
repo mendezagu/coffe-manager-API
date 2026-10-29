@@ -15,8 +15,8 @@ export class FeatureGuard implements CanActivate {
     if (!feature) return true;
     const tenantId = context.switchToHttp().getRequest().user?.tenantId;
     if (!tenantId) return true; // sin sesión de negocio no hay plan que revisar (lo frena el login)
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } });
-    if (!tenant || !hasFeature(tenant.plan, feature)) throw new ForbiddenException(featureDeniedMessage(feature));
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true, addons: true } });
+    if (!tenant || !hasFeature(tenant, feature)) throw new ForbiddenException(featureDeniedMessage(feature));
     return true;
   }
 }

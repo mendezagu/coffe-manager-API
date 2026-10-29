@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
+import { StorageModule } from './storage/storage.module';
 import { TablesModule } from './tables/tables.module';
 import { MenuModule } from './menu/menu.module';
 import { WaitersModule } from './waiters/waiters.module';
@@ -29,6 +30,7 @@ import { ReservationsModule } from './reservations/reservations.module';
       isGlobal: true,
     }),
     PrismaModule,
+    StorageModule,
     TablesModule,
     MenuModule,
     WaitersModule,

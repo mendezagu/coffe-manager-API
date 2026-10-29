@@ -2,6 +2,15 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Category, Destination, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { FEATURE_LABELS, hasFeature } from '../plans/plans';
+import { SUBTITLE_MAX, TAGLINE_MAX, cleanText, pickLayout } from '../common/menu-fields';
+
+// Datos de la sección en la carta (todos opcionales)
+interface CategoryInput {
+  destination?: Destination;
+  subtitle?: string | null;
+  tagline?: string | null;
+  layout?: string;
+}
 
 type CategoryWithCount = Category & { _count?: { menuItems: number } };
 
@@ -11,6 +20,9 @@ export function mapCategory(c: CategoryWithCount) {
     name: c.name,
     position: c.position,
     destination: c.destination,
+    subtitle: c.subtitle,
+    tagline: c.tagline,
+    layout: c.layout,
     ...(c._count && { itemsCount: c._count.menuItems }),
   };
 }
@@ -32,7 +44,7 @@ export class CategoriesService {
     return categories.map(mapCategory);
   }
 
-  async create(tenantId: string, input: { name: string; destination?: Destination }) {
+  async create(tenantId: string, input: CategoryInput & { name: string }) {
     const name = this.cleanName(input.name);
     const destination = input.destination ?? Destination.KITCHEN;
     await this.assertDestinationAllowed(tenantId, destination);
@@ -42,7 +54,15 @@ export class CategoriesService {
       // la categoría nueva queda al final
       const last = await this.prisma.category.aggregate({ where: { tenantId }, _max: { position: true } });
       const category = await this.prisma.category.create({
-        data: { tenantId, name, destination, position: (last._max.position ?? -1) + 1 },
+        data: {
+          tenantId,
+          name,
+          destination,
+          subtitle: cleanText(input.subtitle, SUBTITLE_MAX, 'El subtítulo') ?? null,
+          tagline: cleanText(input.tagline, TAGLINE_MAX, 'El texto de la derecha') ?? null,
+          layout: pickLayout(input.layout),
+          position: (last._max.position ?? -1) + 1,
+        },
       });
       return mapCategory(category);
     } catch (error) {
@@ -51,7 +71,7 @@ export class CategoriesService {
     }
   }
 
-  async update(tenantId: string, id: string, input: { name?: string; destination?: Destination }) {
+  async update(tenantId: string, id: string, input: CategoryInput & { name?: string }) {
     const current = await this.prisma.category.findFirst({ where: { id, tenantId } });
     if (!current) throw new NotFoundException('Categoría no encontrada');
 
@@ -66,7 +86,13 @@ export class CategoriesService {
     try {
       const category = await this.prisma.category.update({
         where: { id },
-        data: { name, destination: input.destination },
+        data: {
+          name,
+          destination: input.destination,
+          subtitle: cleanText(input.subtitle, SUBTITLE_MAX, 'El subtítulo'),
+          tagline: cleanText(input.tagline, TAGLINE_MAX, 'El texto de la derecha'),
+          layout: pickLayout(input.layout),
+        },
       });
       return mapCategory(category);
     } catch (error) {
@@ -114,7 +140,7 @@ export class CategoriesService {
   private async assertDestinationAllowed(tenantId: string, destination: Destination) {
     if (destination !== Destination.BAR) return;
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
-    if (!tenant || !hasFeature(tenant.plan, 'kitchen_bar_split')) {
+    if (!tenant || !hasFeature(tenant, 'kitchen_bar_split')) {
       throw new ForbiddenException(`Tu plan no incluye "${FEATURE_LABELS.kitchen_bar_split}"`);
     }
   }

@@ -114,6 +114,42 @@ describe('Planes: el servidor bloquea lo que el plan no incluye', () => {
     expect(sale.commissionPct).toBe(0);
   });
 
+  it('el Mostrador lo bloquea el servidor en Esencial, lo permite en Pro, Takeaway o con el extra', async () => {
+    await expect(guardAllows('counter_sales', await tenantOn('basic'))).rejects.toThrow(ForbiddenException);
+    await expect(guardAllows('counter_sales', await tenantOn('basic'))).rejects.toThrow('Está disponible desde el plan Pro');
+    await expect(guardAllows('counter_sales', await tenantOn('pro'))).resolves.toBe(true);
+    await expect(guardAllows('counter_sales', await tenantOn('takeaway'))).resolves.toBe(true);
+    await expect(guardAllows('counter_sales', await tenantOn('basic', { addons: ['counter_sales'] }))).resolves.toBe(true);
+  });
+
+  it('la Consola cambia plan, extras y modo de venta, y rechaza valores inexistentes', async () => {
+    const platform = new PlatformTenantsService(prisma);
+    const id = await tenantOn('basic');
+    await expect(platform.update(id, { addons: ['counter_sales', 'counter_sales'], salesMode: 'both' })).resolves.toMatchObject({ plan: 'basic', addons: ['counter_sales'], salesMode: 'both' });
+    await expect(platform.update(id, { salesMode: 'counter' })).resolves.toMatchObject({ addons: ['counter_sales'], salesMode: 'counter' }); // lo que no viene no se toca
+    await expect(platform.update(id, { addons: ['inventada'] })).rejects.toThrow(BadRequestException);
+    await expect(platform.update(id, { addons: ['hotels'] })).rejects.toThrow(BadRequestException);
+    await expect(platform.update(id, { salesMode: 'delivery' })).rejects.toThrow(BadRequestException);
+    expect((await prisma.tenant.findUniqueOrThrow({ where: { id } })).salesMode).toBe('counter');
+  });
+
+  it('un negocio creado con el plan Takeaway arranca mostrando solo el Mostrador', async () => {
+    const platform = new PlatformTenantsService(prisma);
+    const created = await platform.create({ name: 'Pizzería Sol', adminEmail: 'sol@pizza.com', password: 'clave-larga-123', plan: 'takeaway' });
+    expect(created.plan).toBe('takeaway');
+    expect((await prisma.tenant.findUniqueOrThrow({ where: { id: created.id } })).salesMode).toBe('counter');
+    const other = await platform.create({ name: 'Bar Luna', adminEmail: 'luna@bar.com', password: 'clave-larga-123', plan: 'pro' });
+    expect((await prisma.tenant.findUniqueOrThrow({ where: { id: other.id } })).salesMode).toBe('both');
+  });
+
+  it('los ajustes informan funciones (con extras), extras y modo de venta', async () => {
+    const id = await tenantOn('basic', { addons: ['counter_sales'] });
+    const s = await new SettingsService(prisma).get(id);
+    expect(s.features).toEqual(expect.arrayContaining(['tables', 'counter_sales']));
+    expect(s.addons).toEqual(['counter_sales']);
+    expect(s.salesMode).toBe('both');
+  });
+
   it('la Consola cambia el plan de un restaurante, y rechaza planes inexistentes o locales ajenos', async () => {
     const platform = new PlatformTenantsService(prisma);
     const id = await tenantOn('pro');

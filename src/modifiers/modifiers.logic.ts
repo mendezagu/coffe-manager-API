@@ -15,6 +15,11 @@ export interface ModifierSnapshot {
 
 export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+// Lo que suma una opción en un plato: si el plato le fijó un precio propio (ej: "Lágrima" Jarro $4000),
+// es la diferencia contra el precio del plato; si no, lo que suma la opción en general.
+export const effectiveDelta = (itemPrice: number, optionDelta: number, ownPrice?: number | null) =>
+  ownPrice === undefined || ownPrice === null ? optionDelta : round2(ownPrice - itemPrice);
+
 // Lo que suman (o restan) los modificadores al precio de una unidad
 export function modifiersTotal(modifiers: unknown): number {
   return round2(readSnapshot(modifiers).reduce((sum, m) => sum + m.priceDelta, 0));
@@ -35,6 +40,12 @@ export const modifiersKey = (modifiers: unknown) =>
     .map((m) => m.optionId)
     .sort()
     .join('|');
+
+// Opciones que un plato ofrece de un grupo: si le puso precio propio a alguna (ej: solo Chico y Jarro),
+// las que no tienen precio propio no se ofrecen en ese plato.
+export function offeredOptions<T extends { id: string }>(options: T[], ownPrices: Map<string, number>): T[] {
+  return options.some((o) => ownPrices.has(o.id)) ? options.filter((o) => ownPrices.has(o.id)) : options;
+}
 
 /**
  * Valida las opciones que el mozo eligió para un plato y devuelve la copia que se guarda en la orden.
@@ -58,8 +69,12 @@ export async function resolveModifiers(
     orderBy: { position: 'asc' },
   });
 
+  const item = await db.menuItem.findFirst({ where: { id: menuItemId, tenantId }, select: { price: true, optionPrices: true } });
+  const own = new Map((item?.optionPrices ?? []).map((p) => [p.optionId, p.price]));
+
   const optionToGroup = new Map<string, (typeof offered)[number]['group']>();
-  for (const { group } of offered) for (const option of group.options) optionToGroup.set(option.id, group);
+  const groups = offered.map(({ group }) => ({ ...group, options: offeredOptions(group.options, own) }));
+  for (const group of groups) for (const option of group.options) optionToGroup.set(option.id, group);
 
   const unknown = ids.filter((id) => !optionToGroup.has(id));
   if (unknown.length) {
@@ -67,7 +82,7 @@ export async function resolveModifiers(
   }
 
   const snapshot: ModifierSnapshot[] = [];
-  for (const { group } of offered) {
+  for (const group of groups) {
     const chosen = group.options.filter((o) => ids.includes(o.id));
     if (group.selection === 'SINGLE' && chosen.length > 1) {
       throw new BadRequestException(`En "${group.name}" se puede elegir una sola opción`);
@@ -81,7 +96,7 @@ export async function resolveModifiers(
         group: group.name,
         optionId: option.id,
         name: option.name,
-        priceDelta: option.priceDelta,
+        priceDelta: effectiveDelta(item?.price ?? 0, option.priceDelta, own.get(option.id)),
       });
     }
   }

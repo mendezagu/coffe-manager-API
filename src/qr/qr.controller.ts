@@ -96,6 +96,18 @@ export class QrPublicController {
   }
 }
 
+// Carta online: abierta a cualquiera, sin sesión ni código. Solo muestra la carta (nada de pedidos ni de mesas).
+@Public()
+@Controller('api/public/carta')
+export class CartaPublicController {
+  constructor(private readonly qr: QrService) {}
+
+  @Get(':slug')
+  carta(@Param('slug') slug: string, @Req() req: any) {
+    return this.qr.publicCarta(slug, ipOf(req));
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Personal del local
 // ---------------------------------------------------------------------------------------------

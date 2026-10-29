@@ -78,7 +78,7 @@ export class HotelsService {
       orderBy: { tenant: { name: 'asc' } },
     });
     // un restaurante cuyo plan no incluye hoteles no recibe vouchers
-    const eligible = partners.filter((p) => hasFeature(p.tenant.plan, 'hotels'));
+    const eligible = partners.filter((p) => hasFeature(p.tenant, 'hotels'));
     return {
       name: hotel.name,
       slug: hotel.slug,
@@ -92,7 +92,7 @@ export class HotelsService {
         discountPct: p.discountPct,
         conditions: p.conditions,
         // si el restaurante recibe reservas, la pantalla del hotel ofrece "Reservar mesa"
-        reservable: p.tenant.reservationsEnabled && hasFeature(p.tenant.plan, 'reservations'),
+        reservable: p.tenant.reservationsEnabled && hasFeature(p.tenant, 'reservations'),
         maxParty: p.tenant.reservationMaxParty,
       })),
     };
@@ -174,7 +174,7 @@ export class HotelsService {
       include: { tenant: true },
     });
     if (!partner) throw new NotFoundException('Ese restaurante no está adherido a este hotel');
-    if (!partner.tenant.reservationsEnabled || !hasFeature(partner.tenant.plan, 'reservations')) throw new NotFoundException('Este restaurante no recibe reservas por acá');
+    if (!partner.tenant.reservationsEnabled || !hasFeature(partner.tenant, 'reservations')) throw new NotFoundException('Este restaurante no recibe reservas por acá');
     return { hotel, tenant: partner.tenant };
   }
 
@@ -196,7 +196,7 @@ export class HotelsService {
       where: { hotelId: hotel.id, tenantId: input.tenantId, active: true },
       include: { tenant: true },
     });
-    if (!partner || !hasFeature(partner.tenant.plan, 'hotels')) throw new NotFoundException('Ese restaurante no está adherido a este hotel');
+    if (!partner || !hasFeature(partner.tenant, 'hotels')) throw new NotFoundException('Ese restaurante no está adherido a este hotel');
 
     const guestName = input.guestName.trim().replace(/\s+/g, ' ');
     if (guestName.split(' ').filter((word) => word.length >= 2).length < 2) {

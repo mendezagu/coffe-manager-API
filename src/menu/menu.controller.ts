@@ -19,6 +19,13 @@ export class MenuController {
     return this.menuService.create(tenantId, createMenuItemDto);
   }
 
+  // Planilla de platos con precio por tamaño
+  @Roles(Role.ADMIN)
+  @Post('import-sizes')
+  importSizes(@TenantId() tenantId: string, @Body() dto: any) {
+    return this.menuService.importSizes(tenantId, dto);
+  }
+
   @Roles(Role.ADMIN)
   @Put(':id')
   update(@TenantId() tenantId: string, @Param('id') id: string, @Body() updateMenuItemDto: any) {

@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { FEATURE_LABELS, PLAN_LABELS, featureDeniedMessage, PlanKey, featurePlans, featuresOf, hasFeature } from '../plans/plans';
 import { slugify, validateRules } from '../reservations/reservations.logic';
 import { LOGIN_CODE_RE, normalizeLoginCode } from '../auth/login-code';
+import { ObjectStorageService, publicImageUrl } from '../storage/object-storage';
 
 export interface UpdateSettingsInput {
   name?: string;
@@ -32,6 +33,10 @@ export interface UpdateSettingsInput {
   tipSuggestedPct?: number;
   commissionEnabled?: boolean;
   commissionPct?: number;
+  menuPublicEnabled?: boolean;
+  salesMode?: string; // both | counter | tables
+  coverIntensity?: number | null; // null = automática
+  backgroundIntensity?: number | null;
   reservationsEnabled?: boolean;
   reservationOpenMin?: number;
   reservationCloseMin?: number;
@@ -80,14 +85,16 @@ export function mapSettings(t: Tenant) {
     // es lo que realmente rige (elegido Y permitido por el plan).
     plan: t.plan,
     planLabel: PLAN_LABELS[t.plan as PlanKey] ?? t.plan,
-    features: featuresOf(t.plan),
+    features: featuresOf(t),
+    addons: t.addons,
+    salesMode: t.salesMode,
     // plan más bajo que incluye cada función (para las etiquetas de la app)
     featurePlans: featurePlans(),
     planLabels: PLAN_LABELS,
     // Cocina: lo que el negocio eligió. Separar cocina y barra solo rige si hay cocina, lo eligió y el plan lo permite.
     kitchenEnabled: t.kitchenEnabled,
     splitKitchenBar: t.splitKitchenBar,
-    splitActive: t.kitchenEnabled && t.splitKitchenBar && hasFeature(t.plan, 'kitchen_bar_split'),
+    splitActive: t.kitchenEnabled && t.splitKitchenBar && hasFeature(t, 'kitchen_bar_split'),
     // Propinas y caja
     cashierDiscounts: t.cashierDiscounts,
     waiterCanRemoveItems: t.waiterCanRemoveItems,
@@ -96,11 +103,19 @@ export function mapSettings(t: Tenant) {
     tipSuggestedPct: t.tipSuggestedPct,
     // Comisión de mozos
     commissionEnabled: t.commissionEnabled,
-    commissionActive: t.commissionEnabled && hasFeature(t.plan, 'commission'),
+    commissionActive: t.commissionEnabled && hasFeature(t, 'commission'),
     commissionPct: t.commissionPct,
     // Reservas
+    menuPublicEnabled: t.menuPublicEnabled,
+    coverImageUrl: publicImageUrl(t.coverImageKey),
+    backgroundImageUrl: publicImageUrl(t.backgroundImageKey),
+    coverIntensity: t.coverIntensity,
+    backgroundIntensity: t.backgroundIntensity,
+    // la subida de fotos de platos funciona solo si el almacenamiento (R2) está configurado en el servidor
+    imagesAvailable: new ObjectStorageService().enabled,
+    menuSlug: t.menuSlug,
     reservationsEnabled: t.reservationsEnabled,
-    reservationsActive: t.reservationsEnabled && hasFeature(t.plan, 'reservations'),
+    reservationsActive: t.reservationsEnabled && hasFeature(t, 'reservations'),
     reservationSlug: t.reservationSlug,
     reservationOpenMin: t.reservationOpenMin,
     reservationCloseMin: t.reservationCloseMin,
@@ -114,11 +129,11 @@ export function mapSettings(t: Tenant) {
     requireOpenRegister: t.requireOpenRegister,
     // Inventario: lo que el negocio eligió y lo que realmente rige (elegido Y permitido por el plan)
     inventoryEnabled: t.inventoryEnabled,
-    inventoryActive: t.inventoryEnabled && hasFeature(t.plan, 'inventory'),
+    inventoryActive: t.inventoryEnabled && hasFeature(t, 'inventory'),
     blockOutOfStock: t.blockOutOfStock,
     // Pedido por QR: lo que eligió el negocio y lo que realmente rige (elegido Y permitido por el plan)
     qrEnabled: t.qrEnabled,
-    qrActive: t.qrEnabled && hasFeature(t.plan, 'qr_ordering'),
+    qrActive: t.qrEnabled && hasFeature(t, 'qr_ordering'),
     qrAutoConfirm: t.qrAutoConfirm,
     qrRequirePin: t.qrRequirePin,
     onboardingDone: t.onboardingDone,
@@ -165,23 +180,23 @@ export class SettingsService {
       throw new BadRequestException('Moneda o idioma no válidos (ej: ARS y es-AR)');
     }
 
-    if (input.splitKitchenBar === true && !hasFeature(current.plan, 'kitchen_bar_split')) {
+    if (input.splitKitchenBar === true && !hasFeature(current, 'kitchen_bar_split')) {
       throw new ForbiddenException(`Tu plan no incluye "${FEATURE_LABELS.kitchen_bar_split}"`);
     }
 
-    if (input.inventoryEnabled === true && !hasFeature(current.plan, 'inventory')) {
+    if (input.inventoryEnabled === true && !hasFeature(current, 'inventory')) {
       throw new ForbiddenException(`Tu plan no incluye "${FEATURE_LABELS.inventory}"`);
     }
 
     // Comisión y reservas: se pueden dejar como estaban, pero no activar si el plan no las incluye
-    if (input.commissionEnabled === true && !current.commissionEnabled && !hasFeature(current.plan, 'commission')) {
+    if (input.commissionEnabled === true && !current.commissionEnabled && !hasFeature(current, 'commission')) {
       throw new ForbiddenException(featureDeniedMessage('commission'));
     }
-    if (input.reservationsEnabled === true && !current.reservationsEnabled && !hasFeature(current.plan, 'reservations')) {
+    if (input.reservationsEnabled === true && !current.reservationsEnabled && !hasFeature(current, 'reservations')) {
       throw new ForbiddenException(featureDeniedMessage('reservations'));
     }
 
-    if (input.qrEnabled === true && !hasFeature(current.plan, 'qr_ordering')) {
+    if (input.qrEnabled === true && !hasFeature(current, 'qr_ordering')) {
       throw new ForbiddenException(`Tu plan no incluye "${FEATURE_LABELS.qr_ordering}"`);
     }
 
@@ -213,6 +228,12 @@ export class SettingsService {
     let reservationSlug: string | undefined;
     if ((input.reservationsEnabled ?? current.reservationsEnabled) && !current.reservationSlug) {
       reservationSlug = await this.freeReservationSlug(input.name?.trim() || current.name);
+    }
+
+    // La primera vez que se activa la carta online se le arma la dirección pública (/carta/<nombre>)
+    let menuSlug: string | undefined;
+    if ((input.menuPublicEnabled ?? current.menuPublicEnabled) && !current.menuSlug) {
+      menuSlug = await this.freeMenuSlug(input.name?.trim() || current.name);
     }
 
     const morning = input.shiftMorningStart ?? current.shiftMorningStart;
@@ -265,6 +286,12 @@ export class SettingsService {
         tipSuggestedPct: input.tipSuggestedPct ?? undefined,
         commissionEnabled: input.commissionEnabled ?? undefined,
         commissionPct: input.commissionPct === undefined ? undefined : Math.round(input.commissionPct * 100) / 100,
+        menuPublicEnabled: input.menuPublicEnabled ?? undefined,
+        salesMode: input.salesMode ?? undefined,
+        // undefined = no tocar; null = automática; número = ese valor (0 a 100)
+        coverIntensity: input.coverIntensity === undefined ? undefined : input.coverIntensity === null ? null : Math.min(100, Math.max(0, Math.round(input.coverIntensity))),
+        backgroundIntensity: input.backgroundIntensity === undefined ? undefined : input.backgroundIntensity === null ? null : Math.min(100, Math.max(0, Math.round(input.backgroundIntensity))),
+        menuSlug,
         reservationsEnabled: input.reservationsEnabled ?? undefined,
         reservationSlug,
         reservationOpenMin: input.reservationOpenMin,
@@ -290,6 +317,16 @@ export class SettingsService {
       throw e;
     }
     return mapSettings(tenant);
+  }
+
+  // Dirección pública de la carta: el nombre del negocio y, si ya existe, un sufijo para que sea única
+  private async freeMenuSlug(name: string): Promise<string> {
+    const base = slugify(name) || 'carta';
+    for (let i = 0; i < 20; i++) {
+      const candidate = i === 0 ? base : `${base}-${Math.random().toString(36).slice(2, 6)}`;
+      if (!(await this.prisma.tenant.findUnique({ where: { menuSlug: candidate } }))) return candidate;
+    }
+    return `${base}-${Date.now().toString(36)}`;
   }
 
   // Dirección pública para reservar: el nombre del negocio y, si ya existe, un sufijo para que sea única

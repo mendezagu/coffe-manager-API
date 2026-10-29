@@ -90,7 +90,7 @@ export class ReportsService {
 
     const commissionSettings = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { commissionEnabled: true, commissionPct: true, plan: true },
+      select: { commissionEnabled: true, commissionPct: true, plan: true, addons: true },
     });
 
     const sales = await this.prisma.sale.findMany({
@@ -217,7 +217,7 @@ export class ReportsService {
     return {
       range: { from, to, tz },
       // cómo está configurada hoy la comisión (para mostrar u ocultar esa parte de la pantalla)
-      commission: { enabled: (commissionSettings?.commissionEnabled ?? false) && hasFeature(commissionSettings?.plan ?? '', 'commission'), pct: commissionSettings?.commissionPct ?? 0 },
+      commission: { enabled: (commissionSettings?.commissionEnabled ?? false) && hasFeature(commissionSettings ?? '', 'commission'), pct: commissionSettings?.commissionPct ?? 0 },
       summary: {
         salesCount: sales.length,
         totalAmount: round2(totalAmount),

@@ -169,7 +169,7 @@ describe('CategoriesService', () => {
       await expect(settings.update(basicId, { splitKitchenBar: true })).rejects.toThrow(ForbiddenException);
 
       const s = await settings.update(basicId, { splitKitchenBar: false });
-      expect(s.features).toEqual([]);
+      expect(s.features).not.toContain('kitchen_bar_split');
       expect(s.splitActive).toBe(false);
     });
 

@@ -51,4 +51,28 @@ describe('Ajustes: color de marca', () => {
     await settings.update(tenantId, { phone: '123' });
     expect((await settings.get(tenantId)).brandColor).toBe('#8a2a1c');
   });
+
+  describe('intensidad de la portada y del fondo', () => {
+    it('sin elegir nada es automática (null)', async () => {
+      const t = await settings.get(tenantId);
+      expect(t.coverIntensity).toBeNull();
+      expect(t.backgroundIntensity).toBeNull();
+    });
+
+    it('guarda un valor, lo acota de 0 a 100 y null vuelve a automática', async () => {
+      await settings.update(tenantId, { coverIntensity: 70, backgroundIntensity: 250 });
+      let t = await settings.get(tenantId);
+      expect([t.coverIntensity, t.backgroundIntensity]).toEqual([70, 100]);
+
+      await settings.update(tenantId, { coverIntensity: null });
+      t = await settings.get(tenantId);
+      expect([t.coverIntensity, t.backgroundIntensity]).toEqual([null, 100]);
+    });
+
+    it('cambiar otros ajustes no toca la intensidad', async () => {
+      await settings.update(tenantId, { coverIntensity: 30 });
+      await settings.update(tenantId, { phone: '123' });
+      expect((await settings.get(tenantId)).coverIntensity).toBe(30);
+    });
+  });
 });

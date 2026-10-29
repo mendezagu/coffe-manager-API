@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
-import { PLAN_FEATURES } from '../plans/plans';
+import { ADDON_FEATURES, Feature, PLAN_FEATURES, SALES_MODES, featuresOf } from '../plans/plans';
 import { PrismaService } from '../prisma/prisma.service';
 import { freeLoginCode } from '../auth/login-code';
 
@@ -30,6 +30,8 @@ export class PlatformTenantsService {
         name: true,
         loginCode: true,
         plan: true,
+        addons: true,
+        salesMode: true,
         createdAt: true,
         legalName: true,
         taxIdLabel: true,
@@ -52,6 +54,10 @@ export class PlatformTenantsService {
       name: t.name,
       loginCode: t.loginCode,
       plan: t.plan,
+      addons: t.addons,
+      salesMode: t.salesMode,
+      features: featuresOf(t),
+      planFeatures: featuresOf(t.plan),
       createdAt: t.createdAt,
       users: t._count.users,
       hotels: t._count.hotelPartners,
@@ -72,13 +78,28 @@ export class PlatformTenantsService {
     }));
   }
 
-  // Cambia el plan del restaurante: rige desde el próximo pedido a la API (lo que ya cargó no se borra)
-  async setPlan(id: string, plan: string) {
-    if (!(plan in PLAN_FEATURES)) throw new BadRequestException(`Plan desconocido. Planes: ${Object.keys(PLAN_FEATURES).join(', ')}`);
+  // Cambia el plan, los extras y/o el modo de venta del restaurante: rige desde el próximo pedido a la API
+  // (lo que ya cargó no se borra). Lo que no viene no se toca.
+  async update(id: string, input: { plan?: string; addons?: string[]; salesMode?: string }) {
+    const { plan, addons, salesMode } = input;
+    if (plan !== undefined && !(plan in PLAN_FEATURES)) throw new BadRequestException(`Plan desconocido. Planes: ${Object.keys(PLAN_FEATURES).join(', ')}`);
+    if (addons !== undefined && addons.some((a) => !ADDON_FEATURES.includes(a as Feature))) {
+      throw new BadRequestException(`Extra desconocido. Extras: ${ADDON_FEATURES.join(', ')}`);
+    }
+    if (salesMode !== undefined && !(SALES_MODES as readonly string[]).includes(salesMode)) {
+      throw new BadRequestException(`Modo de venta desconocido. Opciones: ${SALES_MODES.join(', ')}`);
+    }
     const tenant = await this.prisma.tenant.findUnique({ where: { id }, select: { id: true } });
     if (!tenant) throw new NotFoundException('Restaurante no encontrado');
-    const updated = await this.prisma.tenant.update({ where: { id }, data: { plan }, select: { id: true, name: true, plan: true } });
-    return updated;
+    return this.prisma.tenant.update({
+      where: { id },
+      data: { plan, addons: addons === undefined ? undefined : [...new Set(addons)], salesMode },
+      select: { id: true, name: true, plan: true, addons: true, salesMode: true },
+    });
+  }
+
+  async setPlan(id: string, plan: string) {
+    return this.update(id, { plan });
   }
 
   async create(input: CreateTenantInput) {
@@ -97,6 +118,8 @@ export class PlatformTenantsService {
         name,
         loginCode,
         plan,
+        // un negocio takeaway no usa mesas: arranca mostrando solo el Mostrador
+        salesMode: plan === 'takeaway' ? 'counter' : 'both',
         users: {
           create: {
             email,
