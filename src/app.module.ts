@@ -21,6 +21,7 @@ import { SettingsModule } from './settings/settings.module';
 import { QrModule } from './qr/qr.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { HotelsModule } from './hotels/hotels.module';
+import { AnnouncementsModule } from './announcements/announcements.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { ReservationsModule } from './reservations/reservations.module';
 
@@ -48,6 +49,7 @@ import { ReservationsModule } from './reservations/reservations.module';
     QrModule,
     RealtimeModule,
     HotelsModule,
+    AnnouncementsModule,
     OnboardingModule,
     ReservationsModule,
   ],

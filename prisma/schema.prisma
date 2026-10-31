@@ -157,6 +157,8 @@ model User {
   // Cuándo se cambió la contraseña por última vez: las sesiones abiertas antes de ese momento dejan de valer
   passwordChangedAt DateTime?
 
+  announcementReads AnnouncementRead[]
+
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -922,4 +924,41 @@ model IdempotencyKey {
 
   @@index([createdAt])
   @@map("idempotency_keys")
+}
+
+// Novedades que Tavolapp (la plataforma) le avisa a los administradores de los locales.
+// No pertenecen a un negocio: las arma la Consola y las ven todos los administradores.
+model Announcement {
+  id          String    @id @default(uuid())
+  title       String
+  body        String
+  // fotos o capturas: claves del almacenamiento (la dirección pública se arma al mostrarlas)
+  imageKeys   String[]  @default([])
+  // importante: además de la campanita, se muestra en una ventana al entrar
+  important   Boolean   @default(false)
+  // draft = borrador (no la ve nadie) | published = publicada
+  status      String    @default("draft")
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  reads AnnouncementRead[]
+
+  @@index([status, publishedAt])
+  @@map("announcements")
+}
+
+// Quién ya leyó cada novedad (por usuario: cada administrador tiene la suya)
+model AnnouncementRead {
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  readAt DateTime @default(now())
+
+  @@id([announcementId, userId])
+  @@index([userId])
+  @@map("announcement_reads")
 }
