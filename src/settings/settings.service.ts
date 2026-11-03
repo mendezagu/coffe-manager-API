@@ -54,6 +54,17 @@ export interface UpdateSettingsInput {
   qrAutoConfirm?: boolean;
   qrRequirePin?: boolean;
   onboardingDone?: boolean;
+  deliveryEnabled?: boolean;
+  deliveryPaused?: boolean;
+  deliveryPickup?: boolean;
+  deliveryHome?: boolean;
+  deliveryFee?: number;
+  deliveryDest?: string; // system | whatsapp | both
+  deliveryWhatsapp?: string;
+  deliveryPayCash?: boolean;
+  deliveryPayTransfer?: boolean;
+  deliveryBankInfo?: string;
+  deliveryPrepMin?: number;
 }
 
 // Logo: una imagen chica embebida (data URL) o un archivo propio de la app (assets/...).
@@ -137,6 +148,19 @@ export function mapSettings(t: Tenant) {
     qrAutoConfirm: t.qrAutoConfirm,
     qrRequirePin: t.qrRequirePin,
     onboardingDone: t.onboardingDone,
+    // Tienda online: lo que eligió el negocio y lo que realmente rige (elegido Y permitido por el plan)
+    deliveryEnabled: t.deliveryEnabled,
+    deliveryActive: t.deliveryEnabled && hasFeature(t, 'online_store'),
+    deliveryPaused: t.deliveryPaused,
+    deliveryPickup: t.deliveryPickup,
+    deliveryHome: t.deliveryHome,
+    deliveryFee: t.deliveryFee,
+    deliveryDest: t.deliveryDest,
+    deliveryWhatsapp: t.deliveryWhatsapp,
+    deliveryPayCash: t.deliveryPayCash,
+    deliveryPayTransfer: t.deliveryPayTransfer,
+    deliveryBankInfo: t.deliveryBankInfo,
+    deliveryPrepMin: t.deliveryPrepMin,
   };
 }
 
@@ -200,6 +224,28 @@ export class SettingsService {
       throw new ForbiddenException(`Tu plan no incluye "${FEATURE_LABELS.qr_ordering}"`);
     }
 
+    // Tienda online: no se activa si el plan no la incluye, y la configuración tiene que ser coherente
+    if (input.deliveryEnabled === true && !current.deliveryEnabled && !hasFeature(current, 'online_store')) {
+      throw new ForbiddenException(`Tu plan no incluye "${FEATURE_LABELS.online_store}"`);
+    }
+    const touchesDelivery = Object.keys(input).some((k) => k.startsWith('delivery'));
+    const deliveryWhatsapp = input.deliveryWhatsapp === undefined ? undefined : input.deliveryWhatsapp.replace(/\D/g, '');
+    if (touchesDelivery) {
+      const pickup = input.deliveryPickup ?? current.deliveryPickup;
+      const home = input.deliveryHome ?? current.deliveryHome;
+      const cash = input.deliveryPayCash ?? current.deliveryPayCash;
+      const transfer = input.deliveryPayTransfer ?? current.deliveryPayTransfer;
+      const dest = input.deliveryDest ?? current.deliveryDest;
+      const whatsapp = deliveryWhatsapp ?? current.deliveryWhatsapp;
+      const bank = (input.deliveryBankInfo ?? current.deliveryBankInfo).trim();
+      if (!pickup && !home) throw new BadRequestException('Elegí al menos una forma de entrega: retiro en el local o envío a domicilio');
+      if (!cash && !transfer) throw new BadRequestException('Elegí al menos una forma de pago: efectivo o transferencia');
+      if (transfer && !bank) throw new BadRequestException('Para cobrar por transferencia cargá tus datos bancarios (alias o CBU)');
+      if (dest !== 'system' && !/^\d{8,16}$/.test(whatsapp)) {
+        throw new BadRequestException('Para recibir pedidos por WhatsApp cargá tu número con código de país (ej: 5491122334455)');
+      }
+    }
+
     // Con la comisión activa hace falta un porcentaje real (entre 0 y 100, sin pasarse de dos decimales)
     const commissionOn = input.commissionEnabled ?? current.commissionEnabled;
     const commissionPct = input.commissionPct ?? current.commissionPct;
@@ -232,7 +278,8 @@ export class SettingsService {
 
     // La primera vez que se activa la carta online se le arma la dirección pública (/carta/<nombre>)
     let menuSlug: string | undefined;
-    if ((input.menuPublicEnabled ?? current.menuPublicEnabled) && !current.menuSlug) {
+    // La tienda online usa la misma dirección (/delivery/<nombre>)
+    if (((input.menuPublicEnabled ?? current.menuPublicEnabled) || (input.deliveryEnabled ?? current.deliveryEnabled)) && !current.menuSlug) {
       menuSlug = await this.freeMenuSlug(input.name?.trim() || current.name);
     }
 
@@ -310,6 +357,17 @@ export class SettingsService {
         qrAutoConfirm: input.qrAutoConfirm ?? undefined,
         qrRequirePin: input.qrRequirePin ?? undefined,
         onboardingDone: input.onboardingDone ?? undefined,
+        deliveryEnabled: input.deliveryEnabled ?? undefined,
+        deliveryPaused: input.deliveryPaused ?? undefined,
+        deliveryPickup: input.deliveryPickup ?? undefined,
+        deliveryHome: input.deliveryHome ?? undefined,
+        deliveryFee: input.deliveryFee === undefined ? undefined : Math.round(input.deliveryFee * 100) / 100,
+        deliveryDest: input.deliveryDest ?? undefined,
+        deliveryWhatsapp,
+        deliveryPayCash: input.deliveryPayCash ?? undefined,
+        deliveryPayTransfer: input.deliveryPayTransfer ?? undefined,
+        deliveryBankInfo: trim(input.deliveryBankInfo),
+        deliveryPrepMin: input.deliveryPrepMin,
       },
     });
     } catch (e: any) {

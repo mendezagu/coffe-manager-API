@@ -7,5 +7,6 @@ import { QrService } from './qr.service';
   imports: [TablesModule],
   controllers: [QrController, QrPublicController, CartaPublicController],
   providers: [QrService],
+  exports: [QrService],
 })
 export class QrModule {}

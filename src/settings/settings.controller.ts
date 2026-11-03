@@ -55,6 +55,17 @@ class UpdateSettingsDto {
   @IsOptional() @IsBoolean() qrAutoConfirm?: boolean;
   @IsOptional() @IsBoolean() qrRequirePin?: boolean;
   @IsOptional() @IsBoolean() onboardingDone?: boolean;
+  @IsOptional() @IsBoolean() deliveryEnabled?: boolean;
+  @IsOptional() @IsBoolean() deliveryPaused?: boolean;
+  @IsOptional() @IsBoolean() deliveryPickup?: boolean;
+  @IsOptional() @IsBoolean() deliveryHome?: boolean;
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(10_000_000) deliveryFee?: number;
+  @IsOptional() @IsIn(['system', 'whatsapp', 'both']) deliveryDest?: string;
+  @IsOptional() @IsString() @MaxLength(30) deliveryWhatsapp?: string;
+  @IsOptional() @IsBoolean() deliveryPayCash?: boolean;
+  @IsOptional() @IsBoolean() deliveryPayTransfer?: boolean;
+  @IsOptional() @IsString() @MaxLength(400) deliveryBankInfo?: string;
+  @IsOptional() @IsInt() @Min(5) @Max(240) deliveryPrepMin?: number;
 }
 
 // Turno en curso: es del negocio, no de cada dispositivo (así todos ven lo mismo)

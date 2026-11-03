@@ -2,7 +2,7 @@
 // Al recibirlo, vuelve a pedir lo que necesita con los mismos endpoints de siempre. Así los permisos, los filtros por
 // negocio y el formato de los datos siguen siendo los de la API, y el aviso no puede filtrar información.
 
-export type Topic = 'tables' | 'qr' | 'kitchen' | 'shift';
+export type Topic = 'tables' | 'qr' | 'kitchen' | 'shift' | 'delivery';
 
 // Sala de cada negocio para el personal (se entra con el login) y para los clientes del QR (se entra con el código de la mesa)
 export const tenantRoom = (tenantId: string) => `tenant:${tenantId}`;
@@ -14,6 +14,7 @@ const BY_RESOURCE: Record<string, Topic[]> = {
   qr: ['qr', 'tables', 'kitchen'], // confirmar un pedido por QR lo convierte en órdenes de la mesa
   kitchen: ['kitchen', 'tables'], // el estado de un plato se ve también en la tarjeta de la mesa
   sales: ['tables', 'kitchen'], // cobrar cierra la mesa
+  delivery: ['delivery'], // aceptar, rechazar o entregar un pedido de la tienda online
   waiters: ['tables'],
   sectors: ['tables'],
   shift: ['shift'], // comenzar un turno nuevo: todos los dispositivos del negocio vuelven a pedir desde cuándo cuenta el Balance

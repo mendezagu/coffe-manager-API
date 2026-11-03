@@ -158,7 +158,7 @@ export class QrService {
   }
 
   // La carta pública: solo nombre, precio y opciones. Sin costos, recetas ni existencias exactas.
-  private async publicMenu(tenant: Tenant) {
+  async publicMenu(tenant: Tenant) {
     const [categories, items] = await Promise.all([
       this.prisma.category.findMany({ where: { tenantId: tenant.id }, orderBy: [{ position: 'asc' }, { name: 'asc' }] }),
       this.prisma.menuItem.findMany({

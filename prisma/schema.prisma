@@ -269,6 +269,18 @@ model Tenant {
   qrEnabled      Boolean @default(false)
   qrAutoConfirm  Boolean @default(false)
   qrRequirePin   Boolean @default(false)
+  // Tienda online (/delivery/<menuSlug>): pedidos para retirar o con envío. Requiere la función "online_store" del plan.
+  deliveryEnabled     Boolean @default(false)
+  deliveryPaused      Boolean @default(false) // "cerrado por ahora": la tienda se ve pero no recibe pedidos
+  deliveryPickup      Boolean @default(true)
+  deliveryHome        Boolean @default(false)
+  deliveryFee         Float   @default(0) // costo fijo del envío
+  deliveryDest        String  @default("system") // a dónde llega el pedido: system | whatsapp | both
+  deliveryWhatsapp    String  @default("") // solo dígitos, con código de país
+  deliveryPayCash     Boolean @default(true)
+  deliveryPayTransfer Boolean @default(false)
+  deliveryBankInfo    String  @default("") // datos para la transferencia (alias, CBU, titular)
+  deliveryPrepMin     Int     @default(30)
   // Asistente de primeros pasos: false hasta que el dueño lo termina o lo saltea (los negocios que ya existían arrancan en true)
   onboardingDone Boolean @default(false)
 
@@ -289,6 +301,7 @@ model Tenant {
   stockItems     StockItem[]
   stockMovements StockMovement[]
   qrRequests     QrOrderRequest[]
+  deliveryOrders DeliveryOrder[]
   serviceCalls   ServiceCall[]
   users          User[]
   hotelPartners  HotelPartner[]
@@ -961,4 +974,52 @@ model AnnouncementRead {
   @@id([announcementId, userId])
   @@index([userId])
   @@map("announcement_reads")
+}
+
+enum DeliveryStatus {
+  PENDING // esperando que el local lo acepte
+  ACCEPTED // aceptado: se está preparando
+  READY // listo para retirar o en camino
+  COMPLETED // entregado y cobrado (genera la venta)
+  REJECTED // el local no lo puede hacer (con motivo)
+  CANCELLED // el cliente lo canceló antes de que lo aceptaran
+}
+
+// Pedido hecho desde la tienda online. No es una venta hasta que se entrega: ahí se crea la Sale.
+model DeliveryOrder {
+  id String @id @default(uuid())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Número corto y visible por local (#1, #2, ...)
+  number     Int
+  // Código secreto con el que el cliente ve cómo va su pedido
+  trackToken String @unique
+
+  clientId     String
+  customerName String
+  phone        String
+  mode         String // pickup | delivery
+  address      String @default("")
+  payMethod    String // cash | transfer
+  note         String @default("")
+
+  // [{ menuItemId, name, quantity, note, optionIds, modifiers, unitPrice }]
+  items       Json
+  subtotal    Float
+  deliveryFee Float
+  total       Float
+
+  status       DeliveryStatus @default(PENDING)
+  rejectReason String         @default("")
+  saleId       String?
+
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+  resolvedBy String?
+
+  @@unique([tenantId, number])
+  @@index([tenantId, status])
+  @@map("delivery_orders")
 }

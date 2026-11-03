@@ -15,6 +15,7 @@ export type Feature =
   | 'kitchen_bar_split'
   | 'inventory'
   | 'qr_ordering'
+  | 'online_store' // Tienda online: pedidos desde un link (/delivery/<local>) para retirar o con envío
   | 'modifiers' // informativa
   | 'advanced_reports' // informativa
   | 'commission' // informativa
@@ -40,12 +41,12 @@ export const PLAN_LABELS: Record<PlanKey, string> = {
 // Lo que suma cada plan de la escalera respecto del anterior
 const PLAN_ADDS: Record<LadderPlan, Feature[]> = {
   basic: ['tables'],
-  pro: ['counter_sales', 'kitchen_bar_split', 'inventory', 'qr_ordering', 'modifiers', 'advanced_reports', 'commission', 'reservations', 'logs'],
+  pro: ['counter_sales', 'kitchen_bar_split', 'inventory', 'qr_ordering', 'online_store', 'modifiers', 'advanced_reports', 'commission', 'reservations', 'logs'],
   benefits: ['hotels'],
 };
 
 // Takeaway: venta en mostrador, sin mesas, mozos, reservas ni pedido por QR de mesa
-const TAKEAWAY_FEATURES: Feature[] = ['counter_sales', 'modifiers'];
+const TAKEAWAY_FEATURES: Feature[] = ['counter_sales', 'online_store', 'modifiers'];
 
 export const PLAN_FEATURES: Record<string, Feature[]> = {
   takeaway: TAKEAWAY_FEATURES,
@@ -58,6 +59,7 @@ export const FEATURE_LABELS: Record<Feature, string> = {
   kitchen_bar_split: 'Separar cocina y barra',
   inventory: 'Inventario y stock',
   qr_ordering: 'Pedido por QR en la mesa',
+  online_store: 'Tienda online (pedidos por link)',
   modifiers: 'Modificadores y extras',
   advanced_reports: 'Reportes completos',
   commission: 'Comisión de mozos',

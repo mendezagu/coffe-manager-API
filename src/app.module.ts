@@ -24,6 +24,7 @@ import { HotelsModule } from './hotels/hotels.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { ReservationsModule } from './reservations/reservations.module';
+import { DeliveryModule } from './delivery/delivery.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { ReservationsModule } from './reservations/reservations.module';
     AnnouncementsModule,
     OnboardingModule,
     ReservationsModule,
+    DeliveryModule,
   ],
   controllers: [AppController],
   providers: [AppService],
