@@ -38,6 +38,7 @@ class UpdateSettingsDto {
   // null = automática
   @IsOptional() @IsInt() @Min(0) @Max(100) coverIntensity?: number | null;
   @IsOptional() @IsInt() @Min(0) @Max(100) backgroundIntensity?: number | null;
+  @IsOptional() @IsIn(['light', 'dark']) menuTheme?: string;
   @IsOptional() @IsBoolean() reservationsEnabled?: boolean;
   @IsOptional() @IsInt() @Min(0) @Max(1439) reservationOpenMin?: number;
   @IsOptional() @IsInt() @Min(0) @Max(1439) reservationCloseMin?: number;

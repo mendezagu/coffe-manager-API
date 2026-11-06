@@ -241,6 +241,8 @@ model Tenant {
   // cuánto se ve cada imagen (0 a 100); null = automático (lo decide el sistema)
   coverIntensity      Int?
   backgroundIntensity Int?
+  // estilo de la carta del cliente: light | dark
+  menuTheme           String  @default("light")
   menuPublicEnabled Boolean @default(false)
   menuSlug          String? @unique
 

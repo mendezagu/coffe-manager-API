@@ -37,6 +37,7 @@ export interface UpdateSettingsInput {
   salesMode?: string; // both | counter | tables
   coverIntensity?: number | null; // null = automática
   backgroundIntensity?: number | null;
+  menuTheme?: string; // light | dark
   reservationsEnabled?: boolean;
   reservationOpenMin?: number;
   reservationCloseMin?: number;
@@ -122,6 +123,7 @@ export function mapSettings(t: Tenant) {
     backgroundImageUrl: publicImageUrl(t.backgroundImageKey),
     coverIntensity: t.coverIntensity,
     backgroundIntensity: t.backgroundIntensity,
+    menuTheme: t.menuTheme,
     // la subida de fotos de platos funciona solo si el almacenamiento (R2) está configurado en el servidor
     imagesAvailable: new ObjectStorageService().enabled,
     menuSlug: t.menuSlug,
@@ -338,6 +340,7 @@ export class SettingsService {
         // undefined = no tocar; null = automática; número = ese valor (0 a 100)
         coverIntensity: input.coverIntensity === undefined ? undefined : input.coverIntensity === null ? null : Math.min(100, Math.max(0, Math.round(input.coverIntensity))),
         backgroundIntensity: input.backgroundIntensity === undefined ? undefined : input.backgroundIntensity === null ? null : Math.min(100, Math.max(0, Math.round(input.backgroundIntensity))),
+        menuTheme: input.menuTheme ?? undefined,
         menuSlug,
         reservationsEnabled: input.reservationsEnabled ?? undefined,
         reservationSlug,

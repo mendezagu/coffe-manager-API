@@ -109,6 +109,7 @@ export class DeliveryService {
         backgroundUrl: publicImageUrl(t.backgroundImageKey),
         coverIntensity: t.coverIntensity,
         backgroundIntensity: t.backgroundIntensity,
+        menuTheme: t.menuTheme,
         address: [t.address, t.city].filter(Boolean).join(', '),
         phone: t.phone,
       },

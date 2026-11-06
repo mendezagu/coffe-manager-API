@@ -121,6 +121,7 @@ export class QrService {
       backgroundUrl: publicImageUrl(tenant.backgroundImageKey),
       coverIntensity: tenant.coverIntensity,
       backgroundIntensity: tenant.backgroundIntensity,
+      menuTheme: tenant.menuTheme,
     };
     const base = {
       business,
@@ -152,6 +153,7 @@ export class QrService {
         backgroundUrl: publicImageUrl(tenant.backgroundImageKey),
         coverIntensity: tenant.coverIntensity,
         backgroundIntensity: tenant.backgroundIntensity,
+      menuTheme: tenant.menuTheme,
       },
       menu: await this.publicMenu(tenant),
     };
