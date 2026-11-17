@@ -73,5 +73,7 @@ export function mapTable(table: TableWithRelations, opts: { populateOrders: bool
     sectorId: table.sectorId ?? null,
     sectorName: table.sector ? table.sector.name : null,
     sectorPosition: table.sector ? table.sector.position : null,
+    layoutX: table.layoutX ?? null,
+    layoutY: table.layoutY ?? null,
   };
 }

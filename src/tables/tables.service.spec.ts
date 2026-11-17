@@ -340,4 +340,39 @@ describe('TablesService', () => {
       await expect(service.linkTables(tenantId, parent.id, [foreign.id])).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('plano del salón (saveLayout)', () => {
+    it('guarda el lugar de las mesas y lo devuelve en la lista', async () => {
+      const a = await newTable('Mesa 1');
+      const b = await newTable('Mesa 2');
+
+      const result = await service.saveLayout(tenantId, [
+        { id: a.id, x: 10.5, y: 20 },
+        { id: b.id, x: 80, y: 55.123 },
+      ]);
+
+      expect(result.find((t) => t._id === a.id)).toMatchObject({ layoutX: 10.5, layoutY: 20 });
+      expect(result.find((t) => t._id === b.id)).toMatchObject({ layoutX: 80, layoutY: 55.12 });
+    });
+
+    it('null en x e y deja la mesa sin ubicar', async () => {
+      const a = await newTable('Mesa 1', { layoutX: 5, layoutY: 5 });
+      const result = await service.saveLayout(tenantId, [{ id: a.id, x: null, y: null }]);
+      expect(result[0]).toMatchObject({ layoutX: null, layoutY: null });
+    });
+
+    it('rechaza lugares fuera de 0 a 100 o mal formados', async () => {
+      const a = await newTable('Mesa 1');
+      await expect(service.saveLayout(tenantId, [{ id: a.id, x: 101, y: 0 }])).rejects.toThrow('entre 0 y 100');
+      await expect(service.saveLayout(tenantId, [{ id: a.id, x: 10, y: null }])).rejects.toThrow('entre 0 y 100');
+      await expect(service.saveLayout(tenantId, [])).rejects.toThrow('entre 1 y 500');
+    });
+
+    it('no mueve mesas de otro negocio', async () => {
+      const foreign = await newTable('Ajena', { layoutX: 1, layoutY: 1 }, otherTenantId);
+      await service.saveLayout(tenantId, [{ id: foreign.id, x: 90, y: 90 }]);
+      const after = await prisma.table.findUnique({ where: { id: foreign.id } });
+      expect(after).toMatchObject({ layoutX: 1, layoutY: 1 });
+    });
+  });
 });

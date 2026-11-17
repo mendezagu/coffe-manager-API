@@ -4,24 +4,29 @@ import { ArrayMaxSize, IsArray, IsBoolean, IsOptional, IsString, MaxLength } fro
 import { Public } from '../auth/public.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { PlatformUserGuard } from '../hotels/platform-auth';
-import { AnnouncementsService, MAX_ANNOUNCEMENT_IMAGE_BYTES, MAX_BODY, MAX_IMAGES, MAX_TITLE } from './announcements.service';
+import { AnnouncementsService, MAX_ANNOUNCEMENT_GIF_BYTES, MAX_BODY, MAX_IMAGES, MAX_TITLE } from './announcements.service';
 
 class AnnouncementDto {
   @IsOptional() @IsString() @MaxLength(MAX_TITLE + 50) title?: string;
   @IsOptional() @IsString() @MaxLength(MAX_BODY + 500) body?: string;
   @IsOptional() @IsArray() @ArrayMaxSize(MAX_IMAGES + 4) @IsString({ each: true }) @MaxLength(120, { each: true }) imageKeys?: string[];
   @IsOptional() @IsBoolean() important?: boolean;
+  @IsOptional() @IsBoolean() showTag?: boolean;
 }
 
-// Lee el cuerpo como archivo, cortando apenas pasa el máximo
+// Lee el cuerpo como archivo. Si pasa el máximo, termina de recibir (y descarta) lo que falta antes de responder:
+// cortar en seco hace que el navegador vea la conexión caída y nunca llegue a mostrar el mensaje de error.
+const DRAIN_LIMIT = 60 * 1024 * 1024; // lo máximo que se recibe de más antes de cortar
+
 async function readBody(req: any, max: number): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > max) throw new BadRequestException('La imagen pesa demasiado. Probá con una más chica.');
-    chunks.push(chunk);
+    if (size <= max) chunks.push(chunk);
+    else if (size > max + DRAIN_LIMIT) break; // un envío enorme sí se corta
   }
+  if (size > max) throw new BadRequestException('La imagen pesa demasiado. Probá con una más chica.');
   return Buffer.concat(chunks);
 }
 
@@ -43,10 +48,11 @@ export class AnnouncementsPlatformController {
     return this.announcements.create(dto);
   }
 
-  // Imagen de una novedad: llega a la API ya achicada (Content-Type: image/webp, jpeg o png)
+  // Imagen de una novedad: llega a la API ya achicada (Content-Type: image/webp, jpeg o png; un GIF llega tal cual)
   @Post('images')
   async image(@Headers('content-type') contentType: string, @Req() req: any) {
-    const data = await readBody(req, MAX_ANNOUNCEMENT_IMAGE_BYTES);
+    // Se lee hasta el máximo de un GIF; el servicio aplica el límite que corresponde a cada tipo
+    const data = await readBody(req, MAX_ANNOUNCEMENT_GIF_BYTES);
     return this.announcements.uploadImage(String(contentType ?? '').split(';')[0].trim(), data);
   }
 

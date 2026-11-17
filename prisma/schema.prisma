@@ -88,6 +88,10 @@ model Table {
   sectorId String?
   sector   Sector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
 
+  // lugar de la mesa en el plano del salón, en % del ancho y del alto (0 a 100); null = todavía sin ubicar
+  layoutX Float?
+  layoutY Float?
+
   // una mesa "hija" tiene un solo controlador; un controlador puede tener muchas hijas
   controlledById String?
   controlledBy   Table?  @relation("TableHierarchy", fields: [controlledById], references: [id], onDelete: SetNull)
@@ -951,6 +955,8 @@ model Announcement {
   imageKeys   String[]  @default([])
   // importante: además de la campanita, se muestra en una ventana al entrar
   important   Boolean   @default(false)
+  // si es importante: mostrar o no la etiqueta "Importante" en la novedad (la ventana al entrar se muestra igual)
+  showTag     Boolean   @default(true)
   // draft = borrador (no la ve nadie) | published = publicada
   status      String    @default("draft")
   publishedAt DateTime?

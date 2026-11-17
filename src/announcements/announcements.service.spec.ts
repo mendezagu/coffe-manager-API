@@ -112,10 +112,15 @@ describe('Novedades de la plataforma', () => {
     await expect(service.uploadImage('application/pdf', Buffer.from('x'))).rejects.toThrow(BadRequestException);
     await expect(service.uploadImage('image/webp', Buffer.alloc(0))).rejects.toThrow(BadRequestException);
     await expect(service.uploadImage('image/webp', Buffer.alloc(600 * 1024))).rejects.toThrow(BadRequestException);
+    // un GIF animado se sube tal cual y admite más peso que el resto (15 MB)
+    await expect(service.uploadImage('image/gif', Buffer.alloc(15 * 1024 * 1024 + 1))).rejects.toThrow(BadRequestException);
+    const gif = await service.uploadImage('image/gif', Buffer.alloc(10 * 1024 * 1024, 1));
+    expect(gif.key).toMatch(/^platform\/announcements\/[0-9a-f]{16}\.gif$/);
+    await expect(service.create({ title: 'x', body: 'x', imageKeys: [gif.key] })).resolves.toBeDefined();
     const one = await service.uploadImage('image/webp', Buffer.from('img1'));
     const two = await service.uploadImage('image/png', Buffer.from('img2'));
     expect(one.key).toMatch(/^platform\/announcements\/[0-9a-f]{16}\.webp$/);
-    expect(storage.put).toHaveBeenCalledTimes(2);
+    expect(storage.put).toHaveBeenCalledTimes(3);
 
     const a = await draft({ imageKeys: [one.key, two.key] });
     await service.update(a.id, { imageKeys: [one.key] });

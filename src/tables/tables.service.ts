@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { newTablePin } from '../qr/qr.tokens';
@@ -84,6 +84,26 @@ export class TablesService {
       }
       throw error;
     }
+  }
+
+  // Guarda el lugar de las mesas en el plano (% del ancho y del alto). null en x e y = volver a "sin ubicar".
+  // Solo toca mesas del negocio; las que no son suyas se ignoran.
+  async saveLayout(tenantId: string, positions: unknown) {
+    if (!Array.isArray(positions) || positions.length === 0 || positions.length > 500) {
+      throw new BadRequestException('Mandá entre 1 y 500 mesas con su lugar');
+    }
+    const clean = positions.map((p: any) => {
+      const unplaced = p?.x === null && p?.y === null;
+      const ok = (n: unknown) => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 100;
+      if (typeof p?.id !== 'string' || (!unplaced && !(ok(p.x) && ok(p.y)))) {
+        throw new BadRequestException('El lugar de cada mesa tiene que estar entre 0 y 100');
+      }
+      return { id: p.id, layoutX: unplaced ? null : Math.round(p.x * 100) / 100, layoutY: unplaced ? null : Math.round(p.y * 100) / 100 };
+    });
+    await this.prisma.$transaction(
+      clean.map((p) => this.prisma.table.updateMany({ where: { id: p.id, tenantId }, data: { layoutX: p.layoutX, layoutY: p.layoutY } })),
+    );
+    return this.findAll(tenantId);
   }
 
   // Devuelve undefined si no vino el campo, null si se quiere quitar el sector, o el id validado.

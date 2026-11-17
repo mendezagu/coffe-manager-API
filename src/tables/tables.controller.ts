@@ -24,6 +24,13 @@ export class TablesController {
     return this.tablesService.create(tenantId, createTableDto);
   }
 
+  // Plano del salón: guarda de una vez el lugar de varias mesas (antes de ":id", si no, "layout" se tomaría por un id)
+  @Roles(Role.ADMIN)
+  @Put('layout')
+  saveLayout(@TenantId() tenantId: string, @Body() body: { positions: { id: string; x: number | null; y: number | null }[] }) {
+    return this.tablesService.saveLayout(tenantId, body?.positions);
+  }
+
   @Roles(Role.ADMIN)
   @Put(':id')
   update(@TenantId() tenantId: string, @Param('id') id: string, @Body() updateTableDto: any) {

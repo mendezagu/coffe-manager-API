@@ -8,8 +8,10 @@ export const MAX_TITLE = 120;
 export const MAX_BODY = 4000;
 export const MAX_IMAGES = 6;
 export const MAX_ANNOUNCEMENT_IMAGE_BYTES = 500 * 1024; // la Consola achica la imagen antes de subirla
-const TYPES: Record<string, string> = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png' };
-const IMAGE_KEY = /^platform\/announcements\/[0-9a-f]{16}\.(webp|jpg|png)$/;
+// Un GIF animado no se puede achicar sin perder el movimiento: se sube tal cual, con un límite propio más amplio (15 MB)
+export const MAX_ANNOUNCEMENT_GIF_BYTES = 15 * 1024 * 1024;
+const TYPES: Record<string, string> = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif' };
+const IMAGE_KEY = /^platform\/announcements\/[0-9a-f]{16}\.(webp|jpg|png|gif)$/;
 const PAGE = 30;
 
 export interface AnnouncementInput {
@@ -17,6 +19,7 @@ export interface AnnouncementInput {
   body?: string;
   imageKeys?: string[];
   important?: boolean;
+  showTag?: boolean;
 }
 
 const clean = (text: unknown) => String(text ?? '').replace(/\r\n/g, '\n').trim();
@@ -29,6 +32,7 @@ export function mapAnnouncement(a: Announcement) {
     body: a.body,
     images: a.imageKeys.map((key) => ({ key, url: publicImageUrl(key) })),
     important: a.important,
+    showTag: a.showTag,
     status: a.status,
     publishedAt: a.publishedAt,
     createdAt: a.createdAt,
@@ -51,7 +55,7 @@ export class AnnouncementsService {
   }
 
   private validate(input: AnnouncementInput, partial: boolean) {
-    const data: { title?: string; body?: string; imageKeys?: string[]; important?: boolean } = {};
+    const data: { title?: string; body?: string; imageKeys?: string[]; important?: boolean; showTag?: boolean } = {};
     if (!partial || input.title !== undefined) {
       const title = clean(input.title);
       if (!title) throw new BadRequestException('Poné un título');
@@ -71,12 +75,13 @@ export class AnnouncementsService {
       data.imageKeys = keys;
     }
     if (input.important !== undefined) data.important = input.important === true;
+    if (input.showTag !== undefined) data.showTag = input.showTag === true;
     return data;
   }
 
   async create(input: AnnouncementInput) {
     const data = this.validate(input, false);
-    const created = await this.prisma.announcement.create({ data: { title: data.title!, body: data.body!, imageKeys: data.imageKeys ?? [], important: data.important ?? false } });
+    const created = await this.prisma.announcement.create({ data: { title: data.title!, body: data.body!, imageKeys: data.imageKeys ?? [], important: data.important ?? false, showTag: data.showTag ?? true } });
     return mapAnnouncement(created);
   }
 
@@ -114,9 +119,13 @@ export class AnnouncementsService {
   async uploadImage(contentType: string, data: Buffer) {
     if (!this.storage.enabled) throw new ServiceUnavailableException('La subida de imágenes todavía no está disponible');
     const ext = TYPES[contentType];
-    if (!ext) throw new BadRequestException('La imagen tiene que ser JPG, PNG o WebP');
+    if (!ext) throw new BadRequestException('La imagen tiene que ser JPG, PNG, WebP o GIF');
     if (data.length === 0) throw new BadRequestException('La imagen está vacía');
-    if (data.length > MAX_ANNOUNCEMENT_IMAGE_BYTES) throw new BadRequestException('La imagen pesa demasiado. Probá con una más chica.');
+    if (contentType === 'image/gif') {
+      if (data.length > MAX_ANNOUNCEMENT_GIF_BYTES) throw new BadRequestException('El GIF pesa demasiado (máximo 15 MB). Probá con uno más corto o más chico.');
+    } else if (data.length > MAX_ANNOUNCEMENT_IMAGE_BYTES) {
+      throw new BadRequestException('La imagen pesa demasiado. Probá con una más chica.');
+    }
     const key = `platform/announcements/${randomBytes(8).toString('hex')}.${ext}`;
     try {
       await this.storage.put(key, data, contentType);
