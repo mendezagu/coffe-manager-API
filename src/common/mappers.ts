@@ -75,5 +75,7 @@ export function mapTable(table: TableWithRelations, opts: { populateOrders: bool
     sectorPosition: table.sector ? table.sector.position : null,
     layoutX: table.layoutX ?? null,
     layoutY: table.layoutY ?? null,
+    // desde cuándo está abierta (primer pedido); null si está libre
+    openedAt: table.openedAt ? table.openedAt.toISOString() : null,
   };
 }
