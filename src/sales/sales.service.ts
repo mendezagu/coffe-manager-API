@@ -1,3 +1,4 @@
+import { assertWithinLimit } from '../plans/limits';
 import {
   BadRequestException,
   ConflictException,
@@ -333,6 +334,7 @@ export class SalesService {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) throw new NotFoundException('Negocio no encontrado');
     this.assertRegisterOpen(tenant);
+    await assertWithinLimit(this.prisma, tenantId, 'counterSalesPerMonth');
 
     const globalPct = input.globalDiscount ?? 0;
     const mayDiscount = actor.role === Role.ADMIN || (actor.role === Role.CASHIER && tenant.cashierDiscounts);

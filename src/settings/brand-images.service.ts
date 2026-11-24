@@ -9,7 +9,10 @@ export const BRAND_KINDS = ['cover', 'background'] as const;
 export type BrandKind = (typeof BRAND_KINDS)[number];
 
 export const MAX_BRAND_BYTES = 600 * 1024;
-const TYPES: Record<string, string> = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png' };
+// La portada también puede ser un GIF animado: se guarda tal cual (achicarlo lo dejaría quieto), así que se le permite pesar más
+export const MAX_GIF_BYTES = 2.5 * 1024 * 1024;
+const TYPES: Record<string, string> = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif' };
+const maxBytesOf = (contentType: string) => (contentType === 'image/gif' ? MAX_GIF_BYTES : MAX_BRAND_BYTES);
 const FIELD: Record<BrandKind, 'coverImageKey' | 'backgroundImageKey'> = { cover: 'coverImageKey', background: 'backgroundImageKey' };
 
 export function assertKind(kind: unknown): BrandKind {
@@ -34,16 +37,17 @@ export class BrandImagesService {
   async uploadUrl(tenantId: string, kind: BrandKind, contentType: string) {
     this.assertEnabled();
     const ext = TYPES[contentType];
-    if (!ext) throw new BadRequestException('La imagen tiene que ser JPG, PNG o WebP');
+    if (!ext) throw new BadRequestException('La imagen tiene que ser JPG, PNG, WebP o GIF (el GIF, solo para la portada)');
+    if (ext === 'gif' && kind !== 'cover') throw new BadRequestException('El GIF animado se puede usar solo en la portada');
     const key = `t/${tenantId}/brand/${kind}-${randomBytes(8).toString('hex')}.${ext}`;
-    return { key, uploadUrl: this.storage.presignPut(key, contentType), headers: { 'Content-Type': contentType }, maxBytes: MAX_BRAND_BYTES };
+    return { key, uploadUrl: this.storage.presignPut(key, contentType), headers: { 'Content-Type': contentType }, maxBytes: maxBytesOf(contentType) };
   }
 
   /** Alternativa: la imagen llega a la API (ya achicada) y la API la guarda. */
   async uploadFile(tenantId: string, kind: BrandKind, contentType: string, data: Buffer) {
     const slot = await this.uploadUrl(tenantId, kind, contentType);
     if (data.length === 0) throw new BadRequestException('La imagen está vacía');
-    if (data.length > MAX_BRAND_BYTES) throw new BadRequestException('La imagen pesa demasiado. Probá con una más chica.');
+    if (data.length > maxBytesOf(contentType)) throw new BadRequestException('La imagen pesa demasiado. Probá con una más chica.');
     try {
       await this.storage.put(slot.key, data, contentType);
     } catch {
@@ -55,12 +59,12 @@ export class BrandImagesService {
   /** Paso 2: la imagen ya está subida; se comprueba y queda asociada (la anterior se borra). */
   async attach(tenantId: string, kind: BrandKind, key: string) {
     this.assertEnabled();
-    const valid = new RegExp(`^t/${tenantId}/brand/${kind}-[0-9a-f]{16}\\.(webp|jpg|png)$`);
+    const valid = new RegExp(`^t/${tenantId}/brand/${kind}-[0-9a-f]{16}\\.(webp|jpg|png|gif)$`);
     if (!valid.test(key ?? '')) throw new BadRequestException('Imagen no válida');
 
     const stored = await this.storage.head(key);
     if (!stored) throw new BadRequestException('No encontramos la imagen subida. Probá de nuevo.');
-    if (stored.size > MAX_BRAND_BYTES) {
+    if (stored.size > (key.endsWith('.gif') ? MAX_GIF_BYTES : MAX_BRAND_BYTES)) {
       await this.storage.delete(key).catch(() => undefined);
       throw new BadRequestException('La imagen pesa demasiado. Probá con una más chica.');
     }

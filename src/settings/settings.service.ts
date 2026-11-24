@@ -1,7 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Tenant } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { FEATURE_LABELS, PLAN_LABELS, featureDeniedMessage, PlanKey, featurePlans, featuresOf, hasFeature } from '../plans/plans';
+import { FEATURE_LABELS, PLAN_LABELS, featureDeniedMessage, PlanKey, featurePlans, featuresOf, hasFeature, limitsOf } from '../plans/plans';
+import { usageOf } from '../plans/limits';
 import { slugify, validateRules } from '../reservations/reservations.logic';
 import { LOGIN_CODE_RE, normalizeLoginCode } from '../auth/login-code';
 import { ObjectStorageService, publicImageUrl } from '../storage/object-storage';
@@ -34,6 +35,7 @@ export interface UpdateSettingsInput {
   commissionEnabled?: boolean;
   commissionPct?: number;
   menuPublicEnabled?: boolean;
+  showPhonePublic?: boolean;
   salesMode?: string; // both | counter | tables
   coverIntensity?: number | null; // null = automática
   backgroundIntensity?: number | null;
@@ -103,6 +105,8 @@ export function mapSettings(t: Tenant) {
     // plan más bajo que incluye cada función (para las etiquetas de la app)
     featurePlans: featurePlans(),
     planLabels: PLAN_LABELS,
+    // topes de cantidad del plan (vacío = sin límites)
+    limits: limitsOf(t),
     // Cocina: lo que el negocio eligió. Separar cocina y barra solo rige si hay cocina, lo eligió y el plan lo permite.
     kitchenEnabled: t.kitchenEnabled,
     splitKitchenBar: t.splitKitchenBar,
@@ -119,6 +123,7 @@ export function mapSettings(t: Tenant) {
     commissionPct: t.commissionPct,
     // Reservas
     menuPublicEnabled: t.menuPublicEnabled,
+    showPhonePublic: t.showPhonePublic,
     coverImageUrl: publicImageUrl(t.coverImageKey),
     backgroundImageUrl: publicImageUrl(t.backgroundImageKey),
     coverIntensity: t.coverIntensity,
@@ -169,6 +174,11 @@ export function mapSettings(t: Tenant) {
 @Injectable()
 export class SettingsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  // Cuánto usa el negocio de los topes de su plan (vacío en los planes sin topes)
+  usage(tenantId: string) {
+    return usageOf(this.prisma, tenantId);
+  }
 
   async get(tenantId: string) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
@@ -336,6 +346,7 @@ export class SettingsService {
         commissionEnabled: input.commissionEnabled ?? undefined,
         commissionPct: input.commissionPct === undefined ? undefined : Math.round(input.commissionPct * 100) / 100,
         menuPublicEnabled: input.menuPublicEnabled ?? undefined,
+        showPhonePublic: input.showPhonePublic ?? undefined,
         salesMode: input.salesMode ?? undefined,
         // undefined = no tocar; null = automática; número = ese valor (0 a 100)
         coverIntensity: input.coverIntensity === undefined ? undefined : input.coverIntensity === null ? null : Math.min(100, Math.max(0, Math.round(input.coverIntensity))),

@@ -1,3 +1,4 @@
+import { assertWithinLimit } from '../plans/limits';
 import {
   BadRequestException,
   ConflictException,
@@ -48,6 +49,7 @@ export class UsersService implements OnModuleInit {
   }
 
   async create(tenantId: string, data: { email: string; password: string; name: string; role: Role }) {
+    await assertWithinLimit(this.prisma, tenantId, 'users');
     try {
       return await this.prisma.user.create({
         data: {

@@ -1,3 +1,4 @@
+import { assertWithinLimit } from '../plans/limits';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MENU_TEMPLATES, findTemplate } from './templates';
@@ -45,6 +46,7 @@ export class OnboardingService {
       throw new ConflictException('Ya tenés platos cargados: la plantilla es solo para empezar de cero');
     }
 
+    await assertWithinLimit(this.prisma, tenantId, 'menuItems', { adding: template.categories.reduce((n, c) => n + c.items.length, 0) });
     return this.prisma.$transaction(async (tx) => {
       const last = await tx.category.aggregate({ where: { tenantId }, _max: { position: true } });
       let position = (last._max.position ?? -1) + 1;
@@ -88,6 +90,7 @@ export class OnboardingService {
     if (!Number.isInteger(count) || count < 1 || count > MAX_TABLES_AT_ONCE) {
       throw new BadRequestException(`Elegí entre 1 y ${MAX_TABLES_AT_ONCE} mesas`);
     }
+    await assertWithinLimit(this.prisma, tenantId, 'tables', { adding: count });
     const existing = await this.prisma.table.findMany({ where: { tenantId }, select: { name: true } });
     const highest = existing.reduce((max, t) => {
       const m = /^Mesa (\d+)$/.exec(t.name);

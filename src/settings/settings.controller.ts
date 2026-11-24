@@ -34,6 +34,7 @@ class UpdateSettingsDto {
   @IsOptional() @IsBoolean() commissionEnabled?: boolean;
   @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100) commissionPct?: number;
   @IsOptional() @IsBoolean() menuPublicEnabled?: boolean;
+  @IsOptional() @IsBoolean() showPhonePublic?: boolean;
   @IsOptional() @IsIn(['both', 'counter', 'tables']) salesMode?: string;
   // null = automática
   @IsOptional() @IsInt() @Min(0) @Max(100) coverIntensity?: number | null;
@@ -94,6 +95,12 @@ export class SettingsController {
   @Get()
   get(@TenantId() tenantId: string) {
     return this.settings.get(tenantId);
+  }
+
+  // Uso de los topes del plan: para los avisos "Usás 4 de 5 mesas"
+  @Get('usage')
+  usage(@TenantId() tenantId: string) {
+    return this.settings.usage(tenantId);
   }
 
   @Roles(Role.ADMIN)

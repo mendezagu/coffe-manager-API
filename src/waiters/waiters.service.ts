@@ -1,3 +1,4 @@
+import { assertWithinLimit } from '../plans/limits';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,6 +14,7 @@ export class WaitersService {
   }
 
   async create(tenantId: string, createWaiterDto: any) {
+    await assertWithinLimit(this.prisma, tenantId, 'waiters');
     const waiter = await this.prisma.waiter.create({
       data: { tenantId, name: createWaiterDto.name },
     });

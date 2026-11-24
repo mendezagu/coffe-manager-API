@@ -1,4 +1,4 @@
-import { ADDON_FEATURES, PLAN_FEATURES, featurePlans, featuresOf, hasFeature } from './plans';
+import { ADDON_FEATURES, PLAN_FEATURES, featurePlans, featuresOf, hasFeature, isFreePlan, limitsOf } from './plans';
 
 describe('Planes', () => {
   it('cada plan hereda lo del anterior', () => {
@@ -23,7 +23,7 @@ describe('Planes', () => {
 
   it('un plan desconocido no incluye nada y los cuatro planes existen', () => {
     expect(featuresOf('otro')).toEqual([]);
-    expect(Object.keys(PLAN_FEATURES)).toEqual(['takeaway', 'basic', 'pro', 'benefits']);
+    expect(Object.keys(PLAN_FEATURES)).toEqual(['free', 'free_takeaway', 'takeaway', 'basic', 'pro', 'benefits']);
   });
 
   it('el Mostrador viene incluido desde Pro (y en Takeaway), no en Esencial', () => {
@@ -48,5 +48,28 @@ describe('Planes', () => {
     expect(ADDON_FEATURES).not.toContain('hotels');
     // restaurante que además hace takeaway no se repite nada
     expect(featuresOf({ plan: 'pro', addons: ['counter_sales'] }).filter((f) => f === 'counter_sales')).toHaveLength(1);
+  });
+
+  it('los planes gratis tienen topes y los pagos no', () => {
+    expect(limitsOf('free').tables).toBe(5);
+    expect(limitsOf('free_takeaway').tables).toBe(0);
+    expect(limitsOf('free_takeaway').onlineOrdersPerMonth).toBe(20);
+    for (const plan of ['basic', 'takeaway', 'pro', 'benefits']) expect(limitsOf(plan)).toEqual({});
+    expect(isFreePlan('free')).toBe(true);
+    expect(isFreePlan({ plan: 'pro', addons: [] })).toBe(false);
+  });
+
+  it('el gratis con salón no incluye lo de Pro: inventario, reportes, reservas ni tienda online', () => {
+    for (const f of ['inventory', 'advanced_reports', 'reservations', 'online_store', 'kitchen_bar_split', 'commission', 'hotels'] as const) {
+      expect(hasFeature('free', f)).toBe(false);
+    }
+    expect(hasFeature('free', 'tables')).toBe(true);
+    expect(hasFeature('free', 'qr_ordering')).toBe(true);
+  });
+
+  it('el gratis Takeaway no tiene salón pero sí tienda online', () => {
+    expect(hasFeature('free_takeaway', 'tables')).toBe(false);
+    expect(hasFeature('free_takeaway', 'qr_ordering')).toBe(false);
+    expect(hasFeature('free_takeaway', 'online_store')).toBe(true);
   });
 });

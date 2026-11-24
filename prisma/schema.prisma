@@ -194,6 +194,8 @@ model Tenant {
   city         String  @default("")
   postalCode   String  @default("")
   phone        String  @default("")
+  // El local elige si su teléfono se muestra en su página de reservas (por defecto, no)
+  showPhonePublic Boolean @default(false)
   ticketFooter String  @default("")
   logoUrl      String?
   // Color de marca de las pantallas que ven los clientes (carta QR y reservas): #RRGGBB

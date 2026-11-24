@@ -28,10 +28,13 @@ export const PLAN_ORDER = ['basic', 'pro', 'benefits'] as const;
 export type LadderPlan = (typeof PLAN_ORDER)[number];
 
 // Todos los planes que se pueden asignar
-export const PLAN_KEYS = ['takeaway', ...PLAN_ORDER] as const;
+// Los planes gratis (`free` para salón y `free_takeaway` para mostrador) tienen topes de cantidad: ver PLAN_LIMITS
+export const PLAN_KEYS = ['free', 'free_takeaway', 'takeaway', ...PLAN_ORDER] as const;
 export type PlanKey = (typeof PLAN_KEYS)[number];
 
 export const PLAN_LABELS: Record<PlanKey, string> = {
+  free: 'Gratis',
+  free_takeaway: 'Gratis Takeaway',
   takeaway: 'Takeaway',
   basic: 'Esencial',
   pro: 'Pro',
@@ -48,7 +51,14 @@ const PLAN_ADDS: Record<LadderPlan, Feature[]> = {
 // Takeaway: venta en mostrador, sin mesas, mozos, reservas ni pedido por QR de mesa
 const TAKEAWAY_FEATURES: Feature[] = ['counter_sales', 'online_store', 'modifiers'];
 
+// Gratis con salón: mesas con tope, pedido por QR en la mesa (se limita solo por las mesas) y un poco de mostrador
+const FREE_FEATURES: Feature[] = ['tables', 'counter_sales', 'qr_ordering', 'modifiers'];
+// Gratis Takeaway: mostrador y un poco de tienda online, sin mesas
+const FREE_TAKEAWAY_FEATURES: Feature[] = ['counter_sales', 'online_store', 'modifiers'];
+
 export const PLAN_FEATURES: Record<string, Feature[]> = {
+  free: FREE_FEATURES,
+  free_takeaway: FREE_TAKEAWAY_FEATURES,
   takeaway: TAKEAWAY_FEATURES,
   ...Object.fromEntries(PLAN_ORDER.map((plan, i) => [plan, PLAN_ORDER.slice(0, i + 1).flatMap((p) => PLAN_ADDS[p])])),
 };
@@ -101,3 +111,27 @@ export function featureDeniedMessage(feature: Feature): string {
   const plan = featurePlans()[feature];
   return `Tu plan no incluye "${FEATURE_LABELS[feature]}". Está disponible desde el plan ${PLAN_LABELS[plan]}.`;
 }
+
+// ---------- Topes de cantidad ----------
+// Un tope ausente = sin límite. Un 0 = no se puede usar. Solo los planes gratis tienen topes hoy.
+export interface PlanLimits {
+  tables?: number; // mesas del salón
+  menuItems?: number; // platos en el menú
+  users?: number; // usuarios activos (cuentas con las que se entra a la app)
+  waiters?: number; // mozos cargados (los nombres que se asignan a las mesas)
+  counterSalesPerMonth?: number; // ventas de mostrador por mes
+  onlineOrdersPerMonth?: number; // pedidos de la tienda online por mes
+  historyDays?: number; // días de historial de ventas visibles
+}
+
+export const PLAN_LIMITS: Record<string, PlanLimits> = {
+  free: { tables: 5, menuItems: 30, users: 2, waiters: 3, counterSalesPerMonth: 20, onlineOrdersPerMonth: 0, historyDays: 30 },
+  free_takeaway: { tables: 0, menuItems: 30, users: 2, waiters: 0, counterSalesPerMonth: 50, onlineOrdersPerMonth: 20, historyDays: 30 },
+};
+
+export function limitsOf(subject: PlanSubject): PlanLimits {
+  const plan = typeof subject === 'string' ? subject : subject.plan;
+  return PLAN_LIMITS[plan] ?? {};
+}
+
+export const isFreePlan = (subject: PlanSubject) => Object.keys(limitsOf(subject)).length > 0;

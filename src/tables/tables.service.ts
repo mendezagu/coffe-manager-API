@@ -1,3 +1,4 @@
+import { assertWithinLimit } from '../plans/limits';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -51,6 +52,7 @@ export class TablesService {
   }
 
   async create(tenantId: string, createTableDto: any) {
+    await assertWithinLimit(this.prisma, tenantId, 'tables');
     const sectorId = await this.resolveSectorId(tenantId, createTableDto.sectorId);
     const table = await this.prisma.table.create({
       data: {

@@ -1,3 +1,4 @@
+import { assertWithinLimit } from '../plans/limits';
 import {
   BadRequestException,
   ConflictException,
@@ -199,6 +200,7 @@ export class DeliveryService {
     const created = await this.prisma.$transaction(async (tx) => {
       // El local se bloquea un instante: dos pedidos a la vez no se saltean los límites ni repiten el número
       await tx.$queryRaw`SELECT id FROM "tenants" WHERE id = ${tenant.id} FOR UPDATE`;
+      await assertWithinLimit(tx, tenant.id, 'onlineOrdersPerMonth', { publicFacing: true });
 
       const pending = await tx.deliveryOrder.count({ where: { tenantId: tenant.id, phone, status: 'PENDING' } });
       if (pending >= MAX_PENDING_PER_PHONE) {

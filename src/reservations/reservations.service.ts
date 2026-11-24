@@ -18,6 +18,7 @@ import {
   timeToMin,
 } from './reservations.logic';
 import { hasFeature } from '../plans/plans';
+import { publicImageUrl } from '../storage/object-storage';
 
 // Cuántas reservas vigentes (hoy o a futuro) puede tener un mismo teléfono en un restaurante
 export const MAX_ACTIVE_PER_PHONE = 3;
@@ -111,8 +112,14 @@ export class ReservationsService {
       address: t.address,
       city: t.city,
       phone: t.phone,
+      showPhone: t.showPhonePublic && !!t.phone,
       logoUrl: t.logoUrl,
       brandColor: t.brandColor,
+      // portada que eligió el local (la misma de su carta y su tienda)
+      coverUrl: publicImageUrl(t.coverImageKey),
+      coverIntensity: t.coverIntensity,
+      // apariencia clara u oscura que eligió el local (la misma de su carta)
+      menuTheme: t.menuTheme,
       slotMin: t.reservationSlotMin,
       durationMin: t.reservationDurationMin,
       maxParty: t.reservationMaxParty,

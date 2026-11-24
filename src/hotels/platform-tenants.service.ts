@@ -118,8 +118,8 @@ export class PlatformTenantsService {
         name,
         loginCode,
         plan,
-        // un negocio takeaway no usa mesas: arranca mostrando solo el Mostrador
-        salesMode: plan === 'takeaway' ? 'counter' : 'both',
+        // un negocio takeaway (de pago o gratis) no usa mesas: arranca mostrando solo el Mostrador
+        salesMode: plan === 'takeaway' || plan === 'free_takeaway' ? 'counter' : 'both',
         users: {
           create: {
             email,

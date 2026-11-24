@@ -1,3 +1,4 @@
+import { assertWithinLimit } from '../plans/limits';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -35,6 +36,7 @@ export class MenuService {
   }
 
   async create(tenantId: string, createMenuItemDto: any) {
+    await assertWithinLimit(this.prisma, tenantId, 'menuItems');
     const categoryId = (await this.resolveCategoryId(tenantId, createMenuItemDto.categoryId)) ?? null;
     const groupIds = await this.resolveGroupIds(tenantId, createMenuItemDto.modifierGroupIds);
     const optionPrices = await this.resolveOptionPrices(tenantId, groupIds ?? [], createMenuItemDto.optionPrices);

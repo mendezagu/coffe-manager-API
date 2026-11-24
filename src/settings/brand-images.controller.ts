@@ -3,7 +3,7 @@ import { Role } from '@prisma/client';
 import { IsIn, IsString, MaxLength } from 'class-validator';
 import { Roles } from '../auth/roles.decorator';
 import { TenantId } from '../auth/tenant.decorator';
-import { BRAND_KINDS, BrandImagesService, MAX_BRAND_BYTES, assertKind } from './brand-images.service';
+import { BRAND_KINDS, BrandImagesService, MAX_GIF_BYTES, assertKind } from './brand-images.service';
 
 // Lee el cuerpo como archivo, cortando apenas pasa el máximo
 async function readBody(req: any, max: number): Promise<Buffer> {
@@ -41,7 +41,7 @@ export class BrandImagesController {
   // Alternativa a la subida directa: la imagen viaja a la API
   @Post('file/:kind')
   async file(@TenantId() tenantId: string, @Param('kind') kind: string, @Headers('content-type') contentType: string, @Req() req: any) {
-    const data = await readBody(req, MAX_BRAND_BYTES);
+    const data = await readBody(req, MAX_GIF_BYTES);
     return this.images.uploadFile(tenantId, assertKind(kind), String(contentType ?? '').split(';')[0].trim(), data);
   }
 
