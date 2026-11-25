@@ -108,7 +108,9 @@ export function featurePlans(): Record<Feature, LadderPlan> {
 
 // Mensaje para quien intenta usar algo que su plan no incluye
 export function featureDeniedMessage(feature: Feature): string {
-  const plan = featurePlans()[feature];
+  // Esencial no se ofrece hoy: lo que venía desde ahí se pide con Pro
+  const first = featurePlans()[feature];
+  const plan = first === 'basic' ? 'pro' : first;
   return `Tu plan no incluye "${FEATURE_LABELS[feature]}". Está disponible desde el plan ${PLAN_LABELS[plan]}.`;
 }
 
