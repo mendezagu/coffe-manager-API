@@ -1,3 +1,4 @@
+import { callsSince } from './calls';
 import {
   BadRequestException,
   ConflictException,
@@ -305,7 +306,7 @@ export class QrService {
         orderBy: { createdAt: 'desc' },
         take: 20,
       }),
-      this.prisma.serviceCall.findMany({ where: { tableId: table.id, status: 'OPEN' } }),
+      this.prisma.serviceCall.findMany({ where: { tableId: table.id, status: 'OPEN', createdAt: { gte: callsSince() } } }),
     ]);
     return {
       requests: await Promise.all(requests.map((r) => this.clientView(r, tenant.kitchenEnabled))),
@@ -340,6 +341,11 @@ export class QrService {
       const orders = await this.prisma.order.count({ where: { tableId: table.id } });
       if (orders === 0) throw new ConflictException('Todavía no hay consumos en la mesa');
     }
+    // Un aviso viejo que nadie atendió ya no cuenta: se cierra para que el cliente pueda volver a avisar
+    await this.prisma.serviceCall.updateMany({
+      where: { tableId: table.id, status: 'OPEN', createdAt: { lt: callsSince() } },
+      data: { status: 'DONE', resolvedAt: new Date(), resolvedBy: 'vencido' },
+    });
     // Si ya hay un aviso igual abierto no se duplica
     const open = await this.prisma.serviceCall.findFirst({ where: { tableId: table.id, type, status: 'OPEN' } });
     if (!open) {
@@ -395,7 +401,7 @@ export class QrService {
         include: { table: { select: { name: true, waiterId: true, _count: { select: { orders: true } } } } },
       }),
       this.prisma.serviceCall.findMany({
-        where: { tenantId, status: 'OPEN', createdAt: { gte: since } },
+        where: { tenantId, status: 'OPEN', createdAt: { gte: callsSince() } },
         orderBy: { createdAt: 'asc' },
         include: { table: { select: { name: true } } },
       }),

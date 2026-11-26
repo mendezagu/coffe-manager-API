@@ -1,3 +1,4 @@
+import { closeTableCalls } from '../qr/calls';
 import { assertWithinLimit } from '../plans/limits';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, Role } from '@prisma/client';
@@ -364,6 +365,7 @@ export class TablesService {
 
     await this.prisma.$transaction([
       this.prisma.order.deleteMany({ where: { tableId: id } }),
+      closeTableCalls(this.prisma, tenantId, id), // antes de desvincular las mesas unidas
       this.prisma.table.updateMany({
         where: { controlledById: id, tenantId },
         data: { controlledById: null, available: true },

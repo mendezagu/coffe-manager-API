@@ -458,6 +458,15 @@ describe('Pedido por QR', () => {
       expect(((await qr.inbox(tenantId)) as any).calls).toEqual([]);
     });
 
+    it('un aviso de más de 24 horas no se le muestra al cliente ni le impide avisar de nuevo', async () => {
+      await qr.createCall(table1.qrToken!, ip(), undefined, 'WAITER');
+      await prisma.serviceCall.updateMany({ where: { tableId: table1.id }, data: { createdAt: new Date(Date.now() - 25 * 3600_000) } });
+      expect((await qr.clientOrders(table1.qrToken!, ip(), '1234', 'celular-1')).calls.waiter).toBe(false);
+      await qr.createCall(table1.qrToken!, ip(), undefined, 'WAITER');
+      expect(await prisma.serviceCall.count({ where: { tableId: table1.id, status: 'OPEN' } })).toBe(1);
+      expect((await qr.clientOrders(table1.qrToken!, ip(), '1234', 'celular-1')).calls.waiter).toBe(true);
+    });
+
     it('pedir la cuenta exige que la mesa tenga consumos', async () => {
       await expect(qr.createCall(table1.qrToken!, ip(), undefined, 'BILL')).rejects.toThrow(ConflictException);
       const sent: any = await sendCola();

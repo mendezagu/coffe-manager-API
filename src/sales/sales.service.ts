@@ -1,3 +1,4 @@
+import { closeTableCalls } from '../qr/calls';
 import { assertWithinLimit } from '../plans/limits';
 import {
   BadRequestException,
@@ -295,6 +296,7 @@ export class SalesService {
         if (isFull) {
           // Se cobró todo: liberar la mesa (igual que resetTable) dentro de la misma transacción
           await tx.order.deleteMany({ where: { tableId } });
+          await closeTableCalls(tx, tenantId, tableId);
           await tx.table.updateMany({
             where: { controlledById: tableId, tenantId },
             data: { controlledById: null, available: true },
